@@ -349,6 +349,9 @@ def task_load_periodic(periodic_deduped_path, periodic_skills_path, periodic_emb
 
 def task_refresh_views():
     import sys, os
+    import psycopg2
+    import psycopg2.extras
+
     _CANDIDATES = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
@@ -361,8 +364,24 @@ def task_refresh_views():
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
-    from db import refresh_materialized_views
-    refresh_materialized_views()
+            
+    from db import get_connection
+    conn = get_connection()
+    conn.autocommit = True
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT schemaname || '.' || matviewname AS full_name FROM pg_matviews WHERE schemaname = 'public';"
+        )
+        views = [row["full_name"] for row in cur.fetchall()]
+        for v in views:
+            try:
+                cur.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {v};")
+            except psycopg2.errors.ObjectNotInPrerequisiteState:
+                conn.rollback()
+                cur.execute(f"REFRESH MATERIALIZED VIEW {v};")
+    finally:
+        conn.close()
 
 
 def task_run_forecasting():
