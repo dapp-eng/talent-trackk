@@ -7,6 +7,7 @@ from datetime import datetime
 from config import KAGGLE_DATASET_PATH, DATA_PROCESSED_DIR
 
 logger = logging.getLogger(__name__)
+
 KAGGLE_BATCH_LIMIT = 150
 
 EXPECTED_COLUMNS = {
@@ -21,6 +22,12 @@ EXPECTED_COLUMNS = {
     "platform": ["platform", "source", "site"],
     "employment_type": ["employment_type", "job_type", "type"],
 }
+
+EMPTY_COLS = [
+    "title", "company", "location", "description", "date_posted",
+    "salary_min", "salary_max", "is_remote", "platform",
+    "employment_type", "source_hash", "extraction_ts", "data_source",
+]
 
 
 def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -40,8 +47,8 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def _make_hash(row: pd.Series) -> str:
     company = str(row.get("company") or "").strip().lower()
-    title = str(row.get("title")   or "").strip().lower()
-    date = str(row.get("date_posted") or "").strip()
+    title   = str(row.get("title")   or "").strip().lower()
+    date    = str(row.get("date_posted") or "").strip()
     return hashlib.md5(f"{company}|{title}|{date}".encode("utf-8")).hexdigest()
 
 
@@ -56,11 +63,10 @@ def extract_kaggle(path: str = None) -> Path:
 
         out_path = DATA_PROCESSED_DIR / "kaggle_staged.parquet"
 
-        seen_hashes: set  = set()
+        seen_hashes: set = set()
         output_chunks: list = []
-        chunksize = 50
 
-        reader = pd.read_csv(src, chunksize=chunksize, low_memory=False, on_bad_lines="skip")
+        reader = pd.read_csv(src, chunksize=50, low_memory=False, on_bad_lines="skip")
 
         for i, chunk in enumerate(reader):
             chunk = _normalize_columns(chunk)
@@ -71,8 +77,9 @@ def extract_kaggle(path: str = None) -> Path:
             new_rows = chunk[~chunk["source_hash"].isin(seen_hashes)].copy()
             if new_rows.empty:
                 continue
-            
-            remaining = KAGGLE_BATCH_LIMIT - sum(len(c) for c in output_chunks)
+
+            collected = sum(len(c) for c in output_chunks)
+            remaining = KAGGLE_BATCH_LIMIT - collected
             if remaining <= 0:
                 break
 
@@ -80,23 +87,14 @@ def extract_kaggle(path: str = None) -> Path:
             seen_hashes.update(new_rows["source_hash"].values)
             output_chunks.append(new_rows)
 
-            total_so_far = sum(len(c) for c in output_chunks)
-            logger.info(
-                f"Kaggle chunk {i + 1}: +{len(new_rows)} new rows "
-                f"(total unique so far: {total_so_far})"
-            )
+            collected = sum(len(c) for c in output_chunks)
+            logger.info(f"Kaggle chunk {i + 1}: +{len(new_rows)} rows (total: {collected})")
 
-            if total_so_far >= KAGGLE_BATCH_LIMIT:
+            if collected >= KAGGLE_BATCH_LIMIT:
                 break
 
-        EMPTY_COLS = [
-            "title", "company", "location", "description", "date_posted",
-            "salary_min", "salary_max", "is_remote", "platform",
-            "employment_type", "source_hash", "extraction_ts", "data_source",
-        ]
-
         if not output_chunks:
-            logger.warning("Kaggle extraction: no rows collected, writing empty parquet.")
+            logger.warning("Kaggle extraction: no rows collected.")
             df = pd.DataFrame(columns=EMPTY_COLS)
         else:
             df = pd.concat(output_chunks, ignore_index=True)
@@ -111,8 +109,9 @@ def extract_kaggle(path: str = None) -> Path:
             "extracted_at": datetime.utcnow().isoformat(),
             "output": str(out_path),
         }
-        meta_path = DATA_PROCESSED_DIR / "kaggle_staged_meta.json"
-        meta_path.write_text(json.dumps(meta, indent=2))
+        (DATA_PROCESSED_DIR / "kaggle_staged_meta.json").write_text(
+            json.dumps(meta, indent=2)
+        )
 
         return out_path
 
