@@ -475,7 +475,7 @@ with DAG(
         task_dedup_kaggle,
         {
             "kaggle_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_kaggle') }}",
-            "kaggle_embeddings_path":   "{{ ti.xcom_pull(task_ids='embed_kaggle') }}",
+            "kaggle_embeddings_path": "{{ ti.xcom_pull(task_ids='embed_kaggle') }}",
         },
     )
 
@@ -484,7 +484,7 @@ with DAG(
         task_dedup_periodic,
         {
             "periodic_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_periodic') }}",
-            "periodic_embeddings_path":   "{{ ti.xcom_pull(task_ids='embed_periodic') }}",
+            "periodic_embeddings_path": "{{ ti.xcom_pull(task_ids='embed_periodic') }}",
         },
     )
 
@@ -492,8 +492,8 @@ with DAG(
         "load_kaggle",
         task_load_kaggle,
         {
-            "kaggle_deduped_path":    "{{ ti.xcom_pull(task_ids='dedup_kaggle') }}",
-            "kaggle_skills_path":     "{{ ti.xcom_pull(task_ids='ner_kaggle') }}",
+            "kaggle_deduped_path": "{{ ti.xcom_pull(task_ids='dedup_kaggle') }}",
+            "kaggle_skills_path": "{{ ti.xcom_pull(task_ids='ner_kaggle') }}",
             "kaggle_embeddings_path": "{{ ti.xcom_pull(task_ids='embed_kaggle') }}",
         },
     )
@@ -502,13 +502,13 @@ with DAG(
         "load_periodic",
         task_load_periodic,
         {
-            "periodic_deduped_path":    "{{ ti.xcom_pull(task_ids='dedup_periodic') }}",
-            "periodic_skills_path":     "{{ ti.xcom_pull(task_ids='ner_periodic') }}",
+            "periodic_deduped_path": "{{ ti.xcom_pull(task_ids='dedup_periodic') }}",
+            "periodic_skills_path": "{{ ti.xcom_pull(task_ids='ner_periodic') }}",
             "periodic_embeddings_path": "{{ ti.xcom_pull(task_ids='embed_periodic') }}",
         },
     )
 
-    t_refresh_views   = _epo("refresh_views",   task_refresh_views)
+    t_refresh_views = _epo("refresh_views",   task_refresh_views)
     t_run_forecasting = _epo("run_forecasting", task_run_forecasting)
 
     t_init_db >> [t_extract_kaggle, t_extract_periodic]
