@@ -57,9 +57,9 @@ def verify_extensions():
 
 
 if __name__ == "__main__":
-    print("=== TalentTrack: One-Time DB Initialization ===")
+    print("TalentTrack: One-Time DB Initialization")
     verify_connection()
     run_ddl()
     seed_platforms()
     verify_extensions()
-    print("=== Initialization complete ===")
+    print("Initialization complete")

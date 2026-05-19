@@ -1,10 +1,13 @@
-import pandas as pd
-import hashlib
 import json
+import hashlib
+import logging
+import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from config import KAGGLE_DATASET_PATH, DATA_PROCESSED_DIR
 
+logger = logging.getLogger(__name__)
+KAGGLE_BATCH_LIMIT = 150
 
 EXPECTED_COLUMNS = {
     "title": ["job_title", "title", "position", "job title"],
@@ -36,21 +39,27 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _make_hash(row: pd.Series) -> str:
-    raw = f"{row.get('company','')}-{row.get('title','')}-{row.get('date_posted','')}"
-    return hashlib.md5(raw.encode()).hexdigest()
+    company = str(row.get("company") or "").strip().lower()
+    title = str(row.get("title")   or "").strip().lower()
+    date = str(row.get("date_posted") or "").strip()
+    return hashlib.md5(f"{company}|{title}|{date}".encode("utf-8")).hexdigest()
 
 
-def extract_kaggle(path: str = None, chunksize: int = 100) -> Path:
+def extract_kaggle(path: str = None) -> Path:
     try:
         src = Path(path) if path else KAGGLE_DATASET_PATH
         if not src.exists():
-            raise FileNotFoundError(f"Kaggle dataset not found at {src}. "
-                                    "Upload it via VSCode to data/raw/kaggle_jobs_2024.csv")
+            raise FileNotFoundError(
+                f"Kaggle dataset not found at {src}. "
+                "Upload it via VSCode to data/raw/kaggle_jobs_2024.csv"
+            )
 
         out_path = DATA_PROCESSED_DIR / "kaggle_staged.parquet"
-        seen_hashes = set()
-        output_chunks = []
-        chunk_buffer_size = 500
+
+        seen_hashes: set  = set()
+        output_chunks: list = []
+        chunksize = 50
+
         reader = pd.read_csv(src, chunksize=chunksize, low_memory=False, on_bad_lines="skip")
 
         for i, chunk in enumerate(reader):
@@ -58,37 +67,55 @@ def extract_kaggle(path: str = None, chunksize: int = 100) -> Path:
             chunk["source_hash"] = chunk.apply(_make_hash, axis=1)
             chunk["extraction_ts"] = datetime.utcnow().isoformat()
             chunk["data_source"] = "kaggle_2024"
+
+            new_rows = chunk[~chunk["source_hash"].isin(seen_hashes)].copy()
+            if new_rows.empty:
+                continue
             
-            chunk = chunk[~chunk["source_hash"].isin(seen_hashes)]
-            if len(chunk) > 0:
-                seen_hashes.update(chunk["source_hash"].values)
-                output_chunks.append(chunk)
-            
-            if (i + 1) % 10 == 0:
-                print(f"  Kaggle processed chunk {i+1}: {len(chunk)} new rows, total unique: {len(seen_hashes)}")
-            
-            if len(output_chunks) >= chunk_buffer_size:
+            remaining = KAGGLE_BATCH_LIMIT - sum(len(c) for c in output_chunks)
+            if remaining <= 0:
                 break
 
+            new_rows = new_rows.head(remaining)
+            seen_hashes.update(new_rows["source_hash"].values)
+            output_chunks.append(new_rows)
+
+            total_so_far = sum(len(c) for c in output_chunks)
+            logger.info(
+                f"Kaggle chunk {i + 1}: +{len(new_rows)} new rows "
+                f"(total unique so far: {total_so_far})"
+            )
+
+            if total_so_far >= KAGGLE_BATCH_LIMIT:
+                break
+
+        EMPTY_COLS = [
+            "title", "company", "location", "description", "date_posted",
+            "salary_min", "salary_max", "is_remote", "platform",
+            "employment_type", "source_hash", "extraction_ts", "data_source",
+        ]
+
         if not output_chunks:
-            df = pd.DataFrame(columns=["title", "company", "location", "description", "date_posted",
-                                       "salary_min", "salary_max", "is_remote", "platform", 
-                                       "employment_type", "source_hash", "extraction_ts", "data_source"])
+            logger.warning("Kaggle extraction: no rows collected, writing empty parquet.")
+            df = pd.DataFrame(columns=EMPTY_COLS)
         else:
             df = pd.concat(output_chunks, ignore_index=True)
 
         df.to_parquet(out_path, index=False, engine="pyarrow")
-        print(f"Kaggle extraction done: {len(df)} rows → {out_path}")
+        logger.info(f"Kaggle extraction done: {len(df)} rows → {out_path}")
 
         meta = {
             "source": "kaggle_2024",
             "rows": len(df),
+            "target_limit": KAGGLE_BATCH_LIMIT,
             "extracted_at": datetime.utcnow().isoformat(),
             "output": str(out_path),
         }
         meta_path = DATA_PROCESSED_DIR / "kaggle_staged_meta.json"
         meta_path.write_text(json.dumps(meta, indent=2))
+
         return out_path
+
     except Exception as e:
-        print(f"ERROR in extract_kaggle: {e}")
+        logger.error(f"ERROR in extract_kaggle: {e}")
         raise

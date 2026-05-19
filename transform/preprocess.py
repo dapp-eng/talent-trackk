@@ -88,9 +88,9 @@ JOB_CATEGORY_KEYWORDS = {
 }
 
 SALARY_BOUNDS_BY_LEVEL = {
-    "Junior":  (20000,  130000),
-    "Mid":     (40000,  220000),
-    "Senior":  (70000,  400000),
+    "Junior": (20000,  130000),
+    "Mid": (40000,  220000),
+    "Senior": (70000,  400000),
     "Manager": (80000,  600000),
     "Unknown": (15000,  500000),
 }
@@ -121,15 +121,15 @@ def parse_date(val) -> pd.Timestamp:
         return pd.NaT
 
     relative_map = [
-        (r"^today$",                       0),
-        (r"^yesterday$",                   1),
-        (r"^(\d+)\s+days?\s+ago$",        "days"),
-        (r"^(\d+)\s+hours?\s+ago$",       "hours"),
-        (r"^(\d+)\s+weeks?\s+ago$",       "weeks"),
-        (r"^(\d+)\s+months?\s+ago$",      "months"),
-        (r"^just\s+posted$",               0),
-        (r"^30\+\s+days\s+ago$",          30),
-        (r"^over\s+30\s+days\s+ago$",     30),
+        (r"^today$", 0),
+        (r"^yesterday$", 1),
+        (r"^(\d+)\s+days?\s+ago$", "days"),
+        (r"^(\d+)\s+hours?\s+ago$", "hours"),
+        (r"^(\d+)\s+weeks?\s+ago$", "weeks"),
+        (r"^(\d+)\s+months?\s+ago$", "months"),
+        (r"^just\s+posted$", 0),
+        (r"^30\+\s+days\s+ago$", 30),
+        (r"^over\s+30\s+days\s+ago$", 30),
     ]
     now = pd.Timestamp.now().normalize()
     for pattern, offset in relative_map:
@@ -299,18 +299,18 @@ def preprocess(df: pd.DataFrame, source_label: str = "unknown") -> pd.DataFrame:
     df["date_parsed"] = df["date_parsed"].dt.normalize()
 
     loc_parsed = df.get("location", pd.Series(dtype=str)).apply(parse_location)
-    df["loc_city"]     = loc_parsed.apply(lambda x: x[0])
+    df["loc_city"] = loc_parsed.apply(lambda x: x[0])
     df["loc_province"] = loc_parsed.apply(lambda x: x[1])
     df["loc_country"]  = loc_parsed.apply(lambda x: x[2])
     df["global_region"] = loc_parsed.apply(lambda x: x[3])
 
-    df["job_level"]    = title_col.apply(infer_job_level)
+    df["job_level"] = title_col.apply(infer_job_level)
     df["job_category"] = title_col.apply(infer_job_category)
 
     df = normalize_salary(df)
-    df["is_remote"]     = df.get("is_remote", pd.Series(dtype=object)).apply(normalize_remote)
+    df["is_remote"] = df.get("is_remote", pd.Series(dtype=object)).apply(normalize_remote)
     df["platform_norm"] = df.get("platform", pd.Series(dtype=str)).apply(normalize_platform)
-    df["source_label"]  = source_label
+    df["source_label"] = source_label
 
     if "source_hash" not in df.columns or df["source_hash"].isna().all():
         import hashlib

@@ -23,17 +23,17 @@ def q_skill_demand_cube(engine=None) -> pd.DataFrame:
             dl.global_region,
             dl.country,
             dpl.platform_name,
-            COUNT(DISTINCT f.job_id)                AS posting_count,
-            SUM(CASE WHEN f.is_remote THEN 1 END)   AS remote_count,
-            AVG(f.salary_min)                        AS avg_salary_min,
-            AVG(f.salary_max)                        AS avg_salary_max
+            COUNT(DISTINCT f.job_id) AS posting_count,
+            SUM(CASE WHEN f.is_remote THEN 1 END) AS remote_count,
+            AVG(f.salary_min) AS avg_salary_min,
+            AVG(f.salary_max) AS avg_salary_max
         FROM fact_job_posting f
         JOIN bridge_job_skill b ON f.job_id = b.job_id
-        JOIN dim_skill ds        ON b.skill_id = ds.skill_id
-        JOIN dim_time dt         ON f.time_id = dt.time_id
-        JOIN dim_position dp     ON f.position_id = dp.position_id
-        JOIN dim_location dl     ON f.location_id = dl.location_id
-        JOIN dim_platform dpl    ON f.platform_id = dpl.platform_id
+        JOIN dim_skill ds ON b.skill_id = ds.skill_id
+        JOIN dim_time dt ON f.time_id = dt.time_id
+        JOIN dim_position dp ON f.position_id = dp.position_id
+        JOIN dim_location dl ON f.location_id = dl.location_id
+        JOIN dim_platform dpl ON f.platform_id = dpl.platform_id
         GROUP BY CUBE(
             dt.year, dt.quarter, dt.month, dt.week_label,
             ds.skill_name, ds.skill_type, ds.skill_domain,
@@ -87,9 +87,9 @@ def q_platform_comparison(engine=None) -> pd.DataFrame:
     query = """
         SELECT
             platform_name, job_category, global_region,
-            SUM(posting_count)      AS total_postings,
+            SUM(posting_count) AS total_postings,
             AVG(with_salary_count * 1.0 / NULLIF(posting_count, 0)) AS pct_with_salary,
-            AVG(remote_count * 1.0 / NULLIF(posting_count, 0))      AS pct_remote
+            AVG(remote_count * 1.0 / NULLIF(posting_count, 0)) AS pct_remote
         FROM mv_platform_monthly
         GROUP BY platform_name, job_category, global_region
         ORDER BY total_postings DESC;
@@ -135,15 +135,15 @@ def q_salary_by_skill_level(engine=None) -> pd.DataFrame:
             dp.job_level,
             dp.job_category,
             dl.country,
-            COUNT(DISTINCT f.job_id)    AS posting_count,
-            AVG(f.salary_min)           AS avg_salary_min,
-            AVG(f.salary_max)           AS avg_salary_max,
+            COUNT(DISTINCT f.job_id) AS posting_count,
+            AVG(f.salary_min) AS avg_salary_min,
+            AVG(f.salary_max) AS avg_salary_max,
             PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY f.salary_max) AS median_salary_max
         FROM fact_job_posting f
         JOIN bridge_job_skill b ON f.job_id = b.job_id
-        JOIN dim_skill ds        ON b.skill_id = ds.skill_id
-        JOIN dim_position dp     ON f.position_id = dp.position_id
-        JOIN dim_location dl     ON f.location_id = dl.location_id
+        JOIN dim_skill ds ON b.skill_id = ds.skill_id
+        JOIN dim_position dp ON f.position_id = dp.position_id
+        JOIN dim_location dl ON f.location_id = dl.location_id
         WHERE f.has_salary = TRUE
         GROUP BY ds.skill_name, ds.skill_domain, dp.job_level, dp.job_category, dl.country
         HAVING COUNT(DISTINCT f.job_id) >= 5

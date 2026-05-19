@@ -1,9 +1,9 @@
-import pandas as pd
-import hashlib
 import json
 import time
 import random
+import hashlib
 import logging
+import pandas as pd
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +18,9 @@ from config import (
 )
 
 logger = logging.getLogger(__name__)
+PERIODIC_ROW_LIMIT = 100
+_MAX_TERMS = 5
+_MAX_LOCATIONS = 1
 
 COLUMN_RENAME = {
     "job_title": "title", "position": "title",
@@ -40,17 +43,16 @@ REQUIRED_COLUMNS = [
 
 
 def _make_hash(row: pd.Series) -> str:
-    company = str(row.get("company", "") or "").strip().lower()
-    title = str(row.get("title", "") or "").strip().lower()
-    date = str(row.get("date_posted", "") or "").strip()
-    raw = f"{company}|{title}|{date}"
-    return hashlib.md5(raw.encode("utf-8")).hexdigest()
+    company = str(row.get("company") or "").strip().lower()
+    title = str(row.get("title")   or "").strip().lower()
+    date = str(row.get("date_posted") or "").strip()
+    return hashlib.md5(f"{company}|{title}|{date}".encode("utf-8")).hexdigest()
 
 
 def _align_columns(df: pd.DataFrame, search_term: str, location: str) -> pd.DataFrame:
     df = df.copy()
     df.columns = [c.lower().strip().replace(" ", "_") for c in df.columns]
-    df = df.rename(columns={k: v for k, v in COLUMN_RENAME.items() if k in df.columns})
+    df = df.rename(columns ={k: v for k, v in COLUMN_RENAME.items() if k in df.columns})
     df["search_term"] = search_term
     df["search_location"] = location
     df["extraction_ts"] = datetime.utcnow().isoformat()
@@ -88,72 +90,103 @@ def scrape_periodic(execution_date: str = None) -> Path:
         from jobspy import scrape_jobs
     except ImportError:
         raise ImportError(
-            "jobspy is not installed on this environment. "
-            "Run: pip install jobspy --break-system-packages"
+            "jobspy is not installed. Run: pip install jobspy --break-system-packages"
         )
 
     PERIODIC_RAW_PATH.mkdir(parents=True, exist_ok=True)
 
     ts = execution_date or datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     out_path = PERIODIC_RAW_PATH / f"periodic_{ts}.parquet"
-    log = {"ts": ts, "runs": [], "total": 0, "errors": [], "skipped": 0, "max_terms": 10, "max_locations": 10}
 
-    all_frames = []
-    terms = JOBSPY_SEARCH_TERMS[:10]
-    locations = JOBSPY_GLOBAL_LOCATIONS[:10]
-    total_combinations = len(terms) * len(locations)
-    processed = 0
+    log = {
+        "ts": ts,
+        "runs": [],
+        "total": 0,
+        "errors": [],
+        "skipped": 0,
+        "row_limit": PERIODIC_ROW_LIMIT,
+        "max_terms": _MAX_TERMS,
+        "max_locations": _MAX_LOCATIONS,
+    }
+
+    terms = JOBSPY_SEARCH_TERMS[:_MAX_TERMS]
+    locations = JOBSPY_GLOBAL_LOCATIONS[:_MAX_LOCATIONS]
 
     logger.info(
-        f"Starting scrape: {len(terms)} terms × {len(locations)} locations = {total_combinations} combinations"
+        f"Starting periodic scrape: {len(terms)} terms × {len(locations)} locations, "
+        f"cap={PERIODIC_ROW_LIMIT} unique rows"
     )
 
+    seen_hashes: set = set()
+    all_frames:  list = []
+    total_unique = 0
+    reached_cap = False
+
     for term in terms:
+        if reached_cap:
+            break
         for location in locations:
             chunk = _scrape_one(scrape_jobs, term, location, log)
+
             if not chunk.empty:
-                all_frames.append(chunk)
-            processed += 1
+                chunk["title"] = chunk["title"].astype(str).str.strip()
+                chunk["company"] = chunk["company"].fillna("Unknown").astype(str).str.strip()
+                chunk["description"] = chunk["description"].fillna("").astype(str)
+                chunk["location"] = chunk["location"].fillna("Unknown").astype(str).str.strip()
+                chunk = chunk[chunk["title"].str.len() > 0]
+                chunk = chunk[chunk["description"].str.len() >= 20]
 
-            if processed % 10 == 0:
-                logger.info(f"  Progress: {processed}/{total_combinations}, "
-                            f"collected {sum(len(f) for f in all_frames)} rows so far")
+                if not chunk.empty:
+                    chunk["source_hash"] = chunk.apply(_make_hash, axis=1)
 
-            delay = random.uniform(2.0, 4.0)
-            time.sleep(delay)
+                    new_rows = chunk[~chunk["source_hash"].isin(seen_hashes)].copy()
+
+                    remaining = PERIODIC_ROW_LIMIT - total_unique
+                    if remaining <= 0:
+                        reached_cap = True
+                        break
+                    new_rows = new_rows.head(remaining)
+
+                    if not new_rows.empty:
+                        seen_hashes.update(new_rows["source_hash"].values)
+                        all_frames.append(new_rows)
+                        total_unique += len(new_rows)
+                        logger.info(
+                            f"  {term!r} / {location!r}: +{len(new_rows)} rows "
+                            f"(total: {total_unique}/{PERIODIC_ROW_LIMIT})"
+                        )
+
+                    if total_unique >= PERIODIC_ROW_LIMIT:
+                        reached_cap = True
+                        break
+                    
+            time.sleep(random.uniform(1.5, 3.0))
 
     if not all_frames:
-        logger.warning("No data collected from any search combination.")
+        logger.warning("Periodic scrape: no data collected from any combination.")
         empty_df = pd.DataFrame(columns=REQUIRED_COLUMNS)
         empty_df.to_parquet(out_path, index=False, engine="pyarrow")
         log["total"] = 0
-        log_path = PERIODIC_RAW_PATH / f"periodic_{ts}_log.json"
-        log_path.write_text(json.dumps(log, indent=2))
+        (PERIODIC_RAW_PATH / f"periodic_{ts}_log.json").write_text(
+            json.dumps(log, indent=2)
+        )
         return out_path
 
     df_all = pd.concat(all_frames, ignore_index=True)
 
-    df_all["title"] = df_all["title"].astype(str).str.strip()
-    df_all["company"] = df_all["company"].fillna("Unknown").astype(str).str.strip()
-    df_all["description"] = df_all["description"].fillna("").astype(str)
-    df_all["location"] = df_all["location"].fillna("Unknown").astype(str).str.strip()
-
-    df_all = df_all[df_all["title"].str.len() > 0]
-    df_all = df_all[df_all["description"].str.len() >= 20]
-
-    df_all["source_hash"] = df_all.apply(_make_hash, axis=1)
     before = len(df_all)
     df_all = df_all.drop_duplicates(subset=["source_hash"])
     log["skipped"] = before - len(df_all)
 
     df_all.to_parquet(out_path, index=False, engine="pyarrow")
-    log["total"] = len(df_all)
 
     staged_path = DATA_PROCESSED_DIR / f"periodic_{ts}_staged.parquet"
     df_all.to_parquet(staged_path, index=False, engine="pyarrow")
 
-    log_path = PERIODIC_RAW_PATH / f"periodic_{ts}_log.json"
-    log_path.write_text(json.dumps(log, indent=2))
+    log["total"] = len(df_all)
+    (PERIODIC_RAW_PATH / f"periodic_{ts}_log.json").write_text(
+        json.dumps(log, indent=2)
+    )
 
     logger.info(
         f"Periodic extraction done: {len(df_all)} unique rows "

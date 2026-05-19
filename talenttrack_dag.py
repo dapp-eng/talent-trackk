@@ -326,12 +326,12 @@ def task_load_kaggle(**context):
         return
     skills_df = pd.read_parquet(skills_path) if (skills_path and Path(skills_path).exists()) else pd.DataFrame()
 
-    time_map     = upsert_dim_time(df["date_parsed"])
+    time_map = upsert_dim_time(df["date_parsed"])
     location_map = upsert_dim_location(df)
-    company_map  = upsert_dim_company(df)
+    company_map = upsert_dim_company(df)
     position_map = upsert_dim_position(df)
     platform_map = upsert_dim_platform(df["platform_norm"].dropna().unique().tolist())
-    skill_map    = upsert_dim_skill(skills_df) if not skills_df.empty else {}
+    skill_map = upsert_dim_skill(skills_df) if not skills_df.empty else {}
 
     job_id_map = load_fact_job_posting(df, time_map, location_map, company_map, position_map, platform_map)
     if not skills_df.empty and skill_map:
@@ -364,8 +364,8 @@ def task_load_periodic(**context):
     from load.load_facts import load_fact_job_posting, load_bridge_job_skill, load_embeddings
 
     deduped_path = context["ti"].xcom_pull(key="periodic_deduped_path",   task_ids="dedup_periodic")
-    skills_path  = context["ti"].xcom_pull(key="periodic_skills_path",    task_ids="ner_periodic")
-    emb_path     = context["ti"].xcom_pull(key="periodic_embeddings_path", task_ids="embed_periodic")
+    skills_path = context["ti"].xcom_pull(key="periodic_skills_path",    task_ids="ner_periodic")
+    emb_path = context["ti"].xcom_pull(key="periodic_embeddings_path", task_ids="embed_periodic")
 
     if not deduped_path or not Path(deduped_path).exists():
         return
@@ -374,12 +374,12 @@ def task_load_periodic(**context):
         return
     skills_df = pd.read_parquet(skills_path) if (skills_path and Path(skills_path).exists()) else pd.DataFrame()
 
-    time_map     = upsert_dim_time(df["date_parsed"])
+    time_map = upsert_dim_time(df["date_parsed"])
     location_map = upsert_dim_location(df)
-    company_map  = upsert_dim_company(df)
+    company_map = upsert_dim_company(df)
     position_map = upsert_dim_position(df)
     platform_map = upsert_dim_platform(df["platform_norm"].dropna().unique().tolist())
-    skill_map    = upsert_dim_skill(skills_df) if not skills_df.empty else {}
+    skill_map = upsert_dim_skill(skills_df) if not skills_df.empty else {}
 
     job_id_map = load_fact_job_posting(df, time_map, location_map, company_map, position_map, platform_map)
     if not skills_df.empty and skill_map:

@@ -3,16 +3,21 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
+_DATA_ROOT = Path(os.environ.get("TALENTTRACK_DATA_DIR", "/tmp/talent-trackk"))
 
-DATA_RAW_DIR = BASE_DIR / "data" / "raw"
-DATA_PROCESSED_DIR = BASE_DIR / "data" / "processed"
-MODELS_DIR = BASE_DIR / "models"
+DATA_RAW_DIR = _DATA_ROOT / "raw"
+DATA_PROCESSED_DIR = _DATA_ROOT / "processed"
+MODELS_DIR = _DATA_ROOT / "models"
 
 DATA_RAW_DIR.mkdir(parents=True, exist_ok=True)
 DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+KAGGLE_DATASET_PATH = BASE_DIR / "data" / "raw" / "kaggle_jobs_2024.csv"
+PERIODIC_RAW_PATH = DATA_RAW_DIR / "periodic"
+
+load_dotenv(BASE_DIR / ".env")
+
 DB_CONFIG = {
     "host": os.getenv("PGHOST"),
     "port": int(os.getenv("PGPORT", 5432)),
@@ -56,28 +61,11 @@ JOBSPY_SEARCH_TERMS = [
     "node developer", "php developer", "ruby developer",
 ]
 
-JOBSPY_GLOBAL_LOCATIONS = [
-    "United States", "United Kingdom", "Canada", "Australia", "Germany",
-    "France", "Netherlands", "Sweden", "Switzerland", "Norway",
-    "Singapore", "Japan", "South Korea", "India", "Hong Kong",
-    "Brazil", "Mexico", "Argentina", "Colombia",
-    "South Africa", "Nigeria", "Kenya",
-    "Indonesia", "Malaysia", "Thailand", "Philippines", "Vietnam",
-    "UAE", "Israel", "Poland", "Spain", "Italy",
-    "New Zealand", "Portugal", "Ireland", "Belgium", "Denmark",
-    "Czech Republic", "Romania", "Pakistan", "Bangladesh",
-    "Taiwan", "China", "Saudi Arabia", "Turkey", "Egypt",
-    "Ukraine", "Finland", "Austria", "Hungary", "Greece",
-    "Chile", "Peru", "Ecuador", "Costa Rica",
-    "Remote", "Worldwide",
-]
+JOBSPY_GLOBAL_LOCATIONS = "Indonesia"
 
 JOBSPY_RESULTS_PER_SEARCH = 30
 JOBSPY_SITES = ["linkedin", "indeed", "glassdoor", "google", "zip_recruiter"]
 JOBSPY_HOURS_OLD = 72
-
-KAGGLE_DATASET_PATH = DATA_RAW_DIR / "kaggle_jobs_2024.csv"
-PERIODIC_RAW_PATH = DATA_RAW_DIR / "periodic"
 
 JOBBERT_MAX_TOKENS = 512
 JOBBERT_CHUNK_OVERLAP = 64

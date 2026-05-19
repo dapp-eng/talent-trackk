@@ -28,10 +28,10 @@ def _safe_int(val) -> int:
 
 
 def _resolve_location_id(row: pd.Series, location_map: dict):
-    city     = str(row.get("loc_city",     "") or "")
+    city = str(row.get("loc_city",     "") or "")
     province = str(row.get("loc_province", "") or "")
-    country  = str(row.get("loc_country",  "") or "Unknown")
-    region   = str(row.get("global_region","") or "Other")
+    country = str(row.get("loc_country",  "") or "Unknown")
+    region = str(row.get("global_region","") or "Other")
 
     key = (city, province, country, region)
     if key in location_map:
@@ -67,14 +67,14 @@ def load_fact_job_posting(df: pd.DataFrame,
         location_id = _resolve_location_id(row, location_map)
 
         company_name = str(row.get("company_clean", "Unknown")).strip() or "Unknown"
-        company_id   = company_map.get(company_name, company_map.get("Unknown"))
+        company_id = company_map.get(company_name, company_map.get("Unknown"))
 
-        title    = str(row.get("title_clean", "")).strip()[:255] or "unknown"
-        level    = str(row.get("job_level",    "Unknown"))
-        cat      = str(row.get("job_category", "Other"))
+        title = str(row.get("title_clean", "")).strip()[:255] or "unknown"
+        level = str(row.get("job_level",    "Unknown"))
+        cat = str(row.get("job_category", "Other"))
         position_id = position_map.get((title, level, cat))
 
-        platform    = str(row.get("platform_norm", "Unknown")).strip() or "Unknown"
+        platform = str(row.get("platform_norm", "Unknown")).strip() or "Unknown"
         platform_id = platform_map.get(platform, platform_map.get("Unknown"))
 
         posting_date = row.get("date_parsed")

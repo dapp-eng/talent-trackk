@@ -44,10 +44,10 @@ def upsert_dim_location(df: pd.DataFrame) -> dict:
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         for _, row in rows.iterrows():
-            city     = row["loc_city"]     or None
+            city = row["loc_city"] or None
             province = row["loc_province"] or None
-            country  = row["loc_country"]  or "Unknown"
-            region   = row["global_region"] or "Other"
+            country = row["loc_country"] or "Unknown"
+            region = row["global_region"] or "Other"
             cur.execute("""
                 INSERT INTO dim_location (city, province_state, country, global_region)
                 VALUES (%s, %s, %s, %s)
