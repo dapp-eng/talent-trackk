@@ -24,7 +24,8 @@ def _get_weekly_skill_data(engine) -> pd.DataFrame:
         FROM mv_weekly_skill_demand
         ORDER BY year, week;
     """
-    df = pd.read_sql(query, engine)
+    with engine.connect() as conn:
+        df = pd.read_sql(query, conn)
     return df
 
 
