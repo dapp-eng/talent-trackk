@@ -84,23 +84,17 @@ CREATE TABLE IF NOT EXISTS fact_job_posting (
     UNIQUE (source_hash, time_id)
 ) PARTITION BY RANGE (time_id);
 
-CREATE TABLE IF NOT EXISTS fact_job_posting_2022 PARTITION OF fact_job_posting
-    FOR VALUES FROM (1) TO (366);
-
-CREATE TABLE IF NOT EXISTS fact_job_posting_2023 PARTITION OF fact_job_posting
-    FOR VALUES FROM (366) TO (731);
-
 CREATE TABLE IF NOT EXISTS fact_job_posting_2024 PARTITION OF fact_job_posting
-    FOR VALUES FROM (731) TO (1096);
+    FOR VALUES FROM (1) TO (367);
 
 CREATE TABLE IF NOT EXISTS fact_job_posting_2025 PARTITION OF fact_job_posting
-    FOR VALUES FROM (1096) TO (1461);
+    FOR VALUES FROM (367) TO (732);
 
 CREATE TABLE IF NOT EXISTS fact_job_posting_2026 PARTITION OF fact_job_posting
-    FOR VALUES FROM (1461) TO (1827);
+    FOR VALUES FROM (732) TO (1097);
 
 CREATE TABLE IF NOT EXISTS fact_job_posting_future PARTITION OF fact_job_posting
-    FOR VALUES FROM (1827) TO (MAXVALUE);
+    FOR VALUES FROM (1097) TO (MAXVALUE);
 
 CREATE INDEX IF NOT EXISTS idx_fact_time ON fact_job_posting (time_id);
 CREATE INDEX IF NOT EXISTS idx_fact_location ON fact_job_posting (location_id);

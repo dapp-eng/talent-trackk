@@ -33,6 +33,46 @@ def task_init_db():
     db.run_ddl(os.path.join(root, "sql", "ddl.sql"))
 
 
+def task_seed_dim_time():
+    import sys, os
+    import psycopg2.extras
+    from datetime import date, timedelta
+
+    _CANDIDATES = [
+        "/opt/airflow/dags/inter24-dag/talent-trackk",
+        "/home/inter24/dags/talent-trackk",
+        "/home/inter24/inter24-dag/talent-trackk",
+    ]
+    root = next((p for p in _CANDIDATES if os.path.isfile(os.path.join(p, "db.py"))), None)
+    if root is None:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES}")
+    for sub in ["", "extract", "transform", "load", "analysis"]:
+        p = os.path.join(root, sub) if sub else root
+        if p not in sys.path:
+            sys.path.insert(0, p)
+
+    from db import get_connection
+
+    conn = get_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        start = date(2024, 1, 1)
+        end = date(2027, 12, 31)
+        d = start
+        while d <= end:
+            iso = d.isocalendar()
+            cur.execute("""
+                INSERT INTO dim_time (date, week, month, quarter, year)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (date) DO NOTHING;
+            """, (d, int(iso[1]), d.month, (d.month - 1) // 3 + 1, d.year))
+            d += timedelta(days=1)
+        conn.commit()
+        print(f"dim_time seeded dari {start} sampai {end}")
+    finally:
+        conn.close()
+
+
 def task_extract_kaggle():
     import sys, os
     _CANDIDATES = [
@@ -280,18 +320,21 @@ def task_load_kaggle(kaggle_deduped_path, kaggle_skills_path, kaggle_embeddings_
     df = pd.read_parquet(kaggle_deduped_path)
     if df.empty:
         return
+    df = df[pd.to_datetime(df["date_parsed"]).dt.year >= 2024]
+    if df.empty:
+        return
     skills_df = (
         pd.read_parquet(kaggle_skills_path)
         if (kaggle_skills_path and Path(kaggle_skills_path).exists())
         else pd.DataFrame()
     )
-    time_map     = upsert_dim_time(df["date_parsed"])
+    time_map = upsert_dim_time(df["date_parsed"])
     location_map = upsert_dim_location(df)
-    company_map  = upsert_dim_company(df)
+    company_map = upsert_dim_company(df)
     position_map = upsert_dim_position(df)
     platform_map = upsert_dim_platform(df["platform_norm"].dropna().unique().tolist())
-    skill_map    = upsert_dim_skill(skills_df) if not skills_df.empty else {}
-    job_id_map   = load_fact_job_posting(df, time_map, location_map, company_map, position_map, platform_map)
+    skill_map = upsert_dim_skill(skills_df) if not skills_df.empty else {}
+    job_id_map = load_fact_job_posting(df, time_map, location_map, company_map, position_map, platform_map)
     if not skills_df.empty and skill_map:
         load_bridge_job_skill(skills_df, job_id_map, skill_map)
     if kaggle_embeddings_path and Path(kaggle_embeddings_path).exists():
@@ -327,18 +370,21 @@ def task_load_periodic(periodic_deduped_path, periodic_skills_path, periodic_emb
     df = pd.read_parquet(periodic_deduped_path)
     if df.empty:
         return
+    df = df[pd.to_datetime(df["date_parsed"]).dt.year >= 2024]
+    if df.empty:
+        return
     skills_df = (
         pd.read_parquet(periodic_skills_path)
         if (periodic_skills_path and Path(periodic_skills_path).exists())
         else pd.DataFrame()
     )
-    time_map     = upsert_dim_time(df["date_parsed"])
+    time_map = upsert_dim_time(df["date_parsed"])
     location_map = upsert_dim_location(df)
-    company_map  = upsert_dim_company(df)
+    company_map = upsert_dim_company(df)
     position_map = upsert_dim_position(df)
     platform_map = upsert_dim_platform(df["platform_norm"].dropna().unique().tolist())
-    skill_map    = upsert_dim_skill(skills_df) if not skills_df.empty else {}
-    job_id_map   = load_fact_job_posting(df, time_map, location_map, company_map, position_map, platform_map)
+    skill_map = upsert_dim_skill(skills_df) if not skills_df.empty else {}
+    job_id_map = load_fact_job_posting(df, time_map, location_map, company_map, position_map, platform_map)
     if not skills_df.empty and skill_map:
         load_bridge_job_skill(skills_df, job_id_map, skill_map)
     if periodic_embeddings_path and Path(periodic_embeddings_path).exists():
@@ -364,8 +410,9 @@ def task_refresh_views():
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
-            
+
     from db import get_connection
+
     conn = get_connection()
     conn.autocommit = True
     try:
@@ -425,6 +472,8 @@ with DAG(
 ) as dag:
 
     t_init_db = _epo("init_db", task_init_db)
+
+    t_seed_dim_time = _epo("seed_dim_time", task_seed_dim_time)
 
     t_extract_kaggle = _epo("extract_kaggle", task_extract_kaggle)
 
@@ -508,10 +557,10 @@ with DAG(
         },
     )
 
-    t_refresh_views = _epo("refresh_views",   task_refresh_views)
+    t_refresh_views = _epo("refresh_views", task_refresh_views)
     t_run_forecasting = _epo("run_forecasting", task_run_forecasting)
 
-    t_init_db >> [t_extract_kaggle, t_extract_periodic]
+    t_init_db >> t_seed_dim_time >> [t_extract_kaggle, t_extract_periodic]
 
     t_extract_kaggle >> t_preprocess_kaggle
     t_preprocess_kaggle >> [t_ner_kaggle, t_embed_kaggle]

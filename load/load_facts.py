@@ -217,7 +217,7 @@ def load_embeddings(df: pd.DataFrame,
             VALUES %s
             ON CONFLICT (job_id) DO UPDATE
                 SET jobbert_vector = EXCLUDED.jobbert_vector,
-                    sbert_vector   = EXCLUDED.sbert_vector;
+                    sbert_vector = EXCLUDED.sbert_vector;
             """,
             rows,
             template="(%s, %s::vector, %s::vector)",
