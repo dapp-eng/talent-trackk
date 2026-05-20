@@ -52,8 +52,8 @@ def task_seed_dim_time():
     conn = get_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        start = date(2024, 1, 1)
-        end = date(2027, 12, 31)
+        start = date(2021, 1, 1)
+        end = date(2028, 12, 31)
         d = start
         while d <= end:
             iso = d.isocalendar()
