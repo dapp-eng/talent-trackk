@@ -123,7 +123,11 @@ BEGIN
                     tbl, id_start, id_end
                 );
                 RAISE NOTICE 'Created partition % (% to %)', tbl, id_start, id_end;
+            ELSE
+                RAISE NOTICE 'Skipping partition % — dim_time belum terisi untuk tahun %', tbl, yr;
             END IF;
+        ELSE
+            RAISE NOTICE 'Partition % sudah ada, skip.', tbl;
         END IF;
     END LOOP;
 END $$;
