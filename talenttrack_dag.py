@@ -460,9 +460,12 @@ def task_refresh_views():
         for v in views:
             try:
                 cur.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {v};")
+                print(f"Refreshed: {v}")
             except psycopg2.errors.ObjectNotInPrerequisiteState:
-                conn.rollback()
                 cur.execute(f"REFRESH MATERIALIZED VIEW {v};")
+                print(f"Refreshed (non-concurrent): {v}")
+            except Exception as e:
+                print(f"Warning: skipping {v}: {e}")
     finally:
         conn.close()
 
@@ -502,7 +505,7 @@ with DAG(
     dag_id="talent-trackk_group3",
     default_args=default_args,
     description="TalentTrack: Full ETL + Forecasting pipeline",
-    schedule="0 6 */3 * *",
+    schedule="0 6 * * *",
     start_date=datetime(2024, 1, 1),
     catchup=False,
     max_active_runs=1,

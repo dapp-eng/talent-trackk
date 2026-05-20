@@ -3,15 +3,16 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
+from sqlalchemy import text
 
 warnings.filterwarnings("ignore")
 
-from db import get_cursor, get_engine
+from db import get_cursor, get_engine, get_connection
 from config import FORECAST_HORIZON_WEEKS, FORECAST_MIN_HISTORY_WEEKS
 
 
 def _get_weekly_skill_data(engine) -> pd.DataFrame:
-    query = """
+    query = text("""
         SELECT
             week_label,
             year,
@@ -23,9 +24,12 @@ def _get_weekly_skill_data(engine) -> pd.DataFrame:
             posting_count
         FROM mv_weekly_skill_demand
         ORDER BY year, week;
-    """
+    """)
     with engine.connect() as conn:
-        df = pd.read_sql(query, conn)
+        result = conn.execute(query)
+        rows = result.fetchall()
+        cols = result.keys()
+    df = pd.DataFrame(rows, columns=list(cols))
     return df
 
 
@@ -192,7 +196,6 @@ def run_forecasting(engine=None, horizon: int = None):
         return
 
     import psycopg2.extras
-    from db import get_connection
     conn = get_connection()
     try:
         cur = conn.cursor()

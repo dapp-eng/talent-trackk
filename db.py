@@ -42,7 +42,19 @@ def refresh_materialized_views():
         "mv_platform_monthly",
         "mv_company_hiring",
     ]
-    with get_cursor() as cur:
+    conn = get_connection()
+    conn.autocommit = True
+    try:
+        cur = conn.cursor()
         for v in views:
-            cur.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {v};")
+            try:
+                cur.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {v};")
+                print(f"Refreshed: {v}")
+            except psycopg2.errors.ObjectNotInPrerequisiteState:
+                cur.execute(f"REFRESH MATERIALIZED VIEW {v};")
+                print(f"Refreshed (non-concurrent): {v}")
+            except Exception as e:
+                print(f"Warning: could not refresh {v}: {e}")
+    finally:
+        conn.close()
     print("All materialized views refreshed.")

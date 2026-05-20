@@ -14,7 +14,7 @@ DATA_RAW_DIR.mkdir(parents=True, exist_ok=True)
 DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-KAGGLE_DATASET_PATH = BASE_DIR / "data" / "raw" / "kaggle_jobs_2024.csv"
+KAGGLE_DATASET_PATH = BASE_DIR / "data" / "raw" / "job_postings.csv"
 PERIODIC_RAW_PATH   = DATA_RAW_DIR / "periodic"
 
 load_dotenv(BASE_DIR / ".env")
