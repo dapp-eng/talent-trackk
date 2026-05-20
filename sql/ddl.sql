@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS dim_location (
 );
 
 CREATE INDEX IF NOT EXISTS idx_dim_location_country ON dim_location (country);
-CREATE INDEX IF NOT EXISTS idx_dim_location_region ON dim_location (global_region);
+CREATE INDEX IF NOT EXISTS idx_dim_location_region  ON dim_location (global_region);
 
 CREATE TABLE IF NOT EXISTS dim_company (
     company_id SERIAL PRIMARY KEY,
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS dim_position (
 );
 
 CREATE INDEX IF NOT EXISTS idx_dim_position_category ON dim_position (job_category);
-CREATE INDEX IF NOT EXISTS idx_dim_position_level ON dim_position (job_level);
+CREATE INDEX IF NOT EXISTS idx_dim_position_level    ON dim_position (job_level);
 
 CREATE TABLE IF NOT EXISTS dim_platform (
     platform_id SERIAL PRIMARY KEY,
@@ -64,6 +64,17 @@ CREATE TABLE IF NOT EXISTS dim_skill (
 
 CREATE INDEX IF NOT EXISTS idx_dim_skill_type   ON dim_skill (skill_type);
 CREATE INDEX IF NOT EXISTS idx_dim_skill_domain ON dim_skill (skill_domain);
+
+CREATE TABLE IF NOT EXISTS dim_entity (
+    entity_id   SERIAL PRIMARY KEY,
+    entity_text TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    source_model TEXT,
+    UNIQUE (entity_text, entity_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dim_entity_type  ON dim_entity (entity_type);
+CREATE INDEX IF NOT EXISTS idx_dim_entity_text  ON dim_entity USING gin (entity_text gin_trgm_ops);
 
 CREATE TABLE IF NOT EXISTS fact_job_posting (
     job_id BIGSERIAL,
@@ -136,6 +147,16 @@ CREATE TABLE IF NOT EXISTS bridge_job_skill (
 CREATE INDEX IF NOT EXISTS idx_bridge_skill ON bridge_job_skill (skill_id);
 CREATE INDEX IF NOT EXISTS idx_bridge_job   ON bridge_job_skill (job_id);
 
+CREATE TABLE IF NOT EXISTS bridge_job_entity (
+    job_id BIGINT NOT NULL,
+    entity_id INT NOT NULL REFERENCES dim_entity(entity_id),
+    extraction_confidence NUMERIC(5,4) DEFAULT 0.0,
+    PRIMARY KEY (job_id, entity_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bridge_entity_entity ON bridge_job_entity (entity_id);
+CREATE INDEX IF NOT EXISTS idx_bridge_entity_job    ON bridge_job_entity (job_id);
+
 CREATE TABLE IF NOT EXISTS job_embeddings (
     job_id BIGINT PRIMARY KEY,
     jobbert_vector vector(768),
@@ -194,6 +215,32 @@ WITH DATA;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_weekly_skill
     ON mv_weekly_skill_demand (week_label, skill_name, job_category, country);
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_weekly_entity_demand AS
+SELECT
+    dt.year,
+    dt.week,
+    dt.week_label,
+    de.entity_text,
+    de.entity_type,
+    de.source_model,
+    dp.job_category,
+    dl.global_region,
+    dl.country,
+    COUNT(DISTINCT f.job_id) AS posting_count
+FROM fact_job_posting f
+JOIN bridge_job_entity be ON f.job_id = be.job_id
+JOIN dim_entity de ON be.entity_id = de.entity_id
+JOIN dim_time dt ON f.time_id = dt.time_id
+JOIN dim_position dp ON f.position_id = dp.position_id
+JOIN dim_location dl ON f.location_id = dl.location_id
+GROUP BY dt.year, dt.week, dt.week_label,
+         de.entity_text, de.entity_type, de.source_model,
+         dp.job_category, dl.global_region, dl.country
+WITH DATA;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_weekly_entity
+    ON mv_weekly_entity_demand (week_label, entity_text, entity_type, job_category, country);
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_platform_monthly AS
 SELECT

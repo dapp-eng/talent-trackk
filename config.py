@@ -15,7 +15,7 @@ DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 KAGGLE_DATASET_PATH = BASE_DIR / "data" / "raw" / "job_postings.csv"
-PERIODIC_RAW_PATH   = DATA_RAW_DIR / "periodic"
+PERIODIC_RAW_PATH = DATA_RAW_DIR / "periodic"
 
 load_dotenv(BASE_DIR / ".env")
 
@@ -40,6 +40,8 @@ DB_URL = (
 
 JOBBERT_MODEL = "jjzha/jobbert-base-cased"
 SBERT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+NER_MODEL = "jjzha/jobbert_knowledge_extraction"
+NER_AGGREGATION = "simple"
 
 JOBSPY_SEARCH_TERMS = [
     "software engineer", "data engineer", "data scientist", "machine learning engineer",
@@ -84,8 +86,8 @@ JOBSPY_HOURS_OLD = 72
 
 JOBBERT_MAX_TOKENS = 512
 JOBBERT_CHUNK_OVERLAP = 64
-EMBEDDING_DIM = 768
+EMBEDDING_DIM  = 768
 SBERT_DIM = 384
 
 FORECAST_HORIZON_WEEKS = 8
-FORECAST_MIN_HISTORY_WEEKS = 12
+FORECAST_MIN_HISTORY_WEEKS = 1

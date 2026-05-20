@@ -4,7 +4,7 @@ from airflow.providers.standard.operators.python import ExternalPythonOperator
 
 VENV_PYTHON = "/opt/airflow/.venv/bin/python"
 
-default_args = {
+_DEFAULT_ARGS = {
     "owner": "inter24",
     "depends_on_past": False,
     "email_on_failure": False,
@@ -14,18 +14,18 @@ default_args = {
     "execution_timeout": timedelta(hours=4),
 }
 
-
 def task_init_db():
-    import sys, os
-    candidates = [
+    import os, sys
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
@@ -34,20 +34,22 @@ def task_init_db():
 
 
 def task_seed_dim_time():
-    import sys, os, psycopg2.extras
-    from datetime import date, timedelta
-    candidates = [
+    import os, sys
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
+    import psycopg2.extras
+    from datetime import date, timedelta
     from db import get_connection
     conn = get_connection()
     try:
@@ -70,16 +72,17 @@ def task_seed_dim_time():
 
 
 def task_extract_kaggle():
-    import sys, os
-    candidates = [
+    import os, sys
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
@@ -88,16 +91,17 @@ def task_extract_kaggle():
 
 
 def task_extract_periodic(execution_date):
-    import sys, os
-    candidates = [
+    import os, sys
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
@@ -106,17 +110,18 @@ def task_extract_periodic(execution_date):
 
 
 def task_preprocess_kaggle(kaggle_raw_path):
-    import sys, os
+    import os, sys
     from pathlib import Path
-    candidates = [
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
@@ -132,17 +137,18 @@ def task_preprocess_kaggle(kaggle_raw_path):
 
 
 def task_preprocess_periodic(periodic_raw_path):
-    import sys, os
+    import os, sys
     from pathlib import Path
-    candidates = [
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
@@ -153,17 +159,18 @@ def task_preprocess_periodic(periodic_raw_path):
 
 
 def task_ner_kaggle(kaggle_preprocessed_path):
-    import sys, os
+    import os, sys
     from pathlib import Path
-    candidates = [
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
@@ -174,17 +181,18 @@ def task_ner_kaggle(kaggle_preprocessed_path):
 
 
 def task_ner_periodic(periodic_preprocessed_path):
-    import sys, os
+    import os, sys
     from pathlib import Path
-    candidates = [
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
@@ -195,21 +203,24 @@ def task_ner_periodic(periodic_preprocessed_path):
 
 
 def task_embed_kaggle(kaggle_preprocessed_path):
-    import sys, os, gc, logging, numpy as np
-    from pathlib import Path
-    candidates = [
+    import os, sys
+    import gc, logging
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
-    logger = logging.getLogger(__name__)
+    import numpy as np
+    from pathlib import Path
+    _logger = logging.getLogger(__name__)
     try:
         import torch
         torch.set_num_threads(2)
@@ -224,7 +235,7 @@ def task_embed_kaggle(kaggle_preprocessed_path):
         gc.collect()
         return str(result)
     except MemoryError as e:
-        logger.error(f"MemoryError during embedding (kaggle): {e}")
+        _logger.error(f"MemoryError during embedding (kaggle): {e}")
         from config import DATA_PROCESSED_DIR, EMBEDDING_DIM, SBERT_DIM
         stem = Path(kaggle_preprocessed_path).stem
         out_path = DATA_PROCESSED_DIR / f"{stem}_embeddings.npz"
@@ -236,26 +247,29 @@ def task_embed_kaggle(kaggle_preprocessed_path):
         )
         return str(out_path)
     except Exception as e:
-        logger.error(f"Embedding task failed (kaggle): {e}", exc_info=True)
+        _logger.error(f"Embedding task failed (kaggle): {e}", exc_info=True)
         raise
 
 
 def task_embed_periodic(periodic_preprocessed_path):
-    import sys, os, gc, logging, numpy as np
-    from pathlib import Path
-    candidates = [
+    import os, sys
+    import gc, logging
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
-    logger = logging.getLogger(__name__)
+    import numpy as np
+    from pathlib import Path
+    _logger = logging.getLogger(__name__)
     try:
         import torch
         torch.set_num_threads(2)
@@ -270,9 +284,9 @@ def task_embed_periodic(periodic_preprocessed_path):
         gc.collect()
         return str(result)
     except MemoryError as e:
-        logger.error(f"MemoryError during embedding (periodic): {e}")
+        _logger.error(f"MemoryError during embedding (periodic): {e}")
         from config import DATA_PROCESSED_DIR, EMBEDDING_DIM, SBERT_DIM
-        stem = Path(periodic_preprocessed_path).stem
+        stem     = Path(periodic_preprocessed_path).stem
         out_path = DATA_PROCESSED_DIR / f"{stem}_embeddings.npz"
         np.savez_compressed(
             out_path,
@@ -282,22 +296,23 @@ def task_embed_periodic(periodic_preprocessed_path):
         )
         return str(out_path)
     except Exception as e:
-        logger.error(f"Embedding task failed (periodic): {e}", exc_info=True)
+        _logger.error(f"Embedding task failed (periodic): {e}", exc_info=True)
         raise
 
 
 def task_dedup_kaggle(kaggle_preprocessed_path, kaggle_embeddings_path):
-    import sys, os
+    import os, sys
     from pathlib import Path
-    candidates = [
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
@@ -309,17 +324,19 @@ def task_dedup_kaggle(kaggle_preprocessed_path, kaggle_embeddings_path):
 
 
 def task_dedup_periodic(periodic_preprocessed_path, periodic_embeddings_path):
-    import sys, os, psycopg2.extras
+    import os, sys
+    import psycopg2.extras
     from pathlib import Path
-    candidates = [
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
@@ -338,26 +355,33 @@ def task_dedup_periodic(periodic_preprocessed_path, periodic_embeddings_path):
     return str(run_dedup(periodic_preprocessed_path, embeddings_path=emb, existing_hashes=existing_hashes))
 
 
-def task_load_kaggle(kaggle_deduped_path, kaggle_skills_path, kaggle_embeddings_path):
-    import sys, os, numpy as np, pandas as pd
+def task_load_kaggle(kaggle_deduped_path, kaggle_entities_path, kaggle_embeddings_path):
+    import os, sys
+    import numpy as np
+    import pandas as pd
     from pathlib import Path
-    candidates = [
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
     from load.load_dimensions import (
         upsert_dim_time, upsert_dim_location, upsert_dim_company,
         upsert_dim_position, upsert_dim_platform, upsert_dim_skill,
+        upsert_dim_entity,
     )
-    from load.load_facts import load_fact_job_posting, load_bridge_job_skill, load_embeddings
+    from load.load_facts import (
+        load_fact_job_posting, load_bridge_job_skill,
+        load_bridge_job_entity, load_embeddings,
+    )
     if not kaggle_deduped_path or not Path(kaggle_deduped_path).exists():
         return
     df = pd.read_parquet(kaggle_deduped_path)
@@ -366,46 +390,62 @@ def task_load_kaggle(kaggle_deduped_path, kaggle_skills_path, kaggle_embeddings_
     df = df[pd.to_datetime(df["date_parsed"]).dt.year >= 2024]
     if df.empty:
         return
-    skills_df = (
-        pd.read_parquet(kaggle_skills_path)
-        if (kaggle_skills_path and Path(kaggle_skills_path).exists())
+
+    entities_df = (
+        pd.read_parquet(kaggle_entities_path)
+        if (kaggle_entities_path and Path(kaggle_entities_path).exists())
         else pd.DataFrame()
     )
+
     time_map = upsert_dim_time(df["date_parsed"])
     location_map = upsert_dim_location(df)
     company_map = upsert_dim_company(df)
     position_map = upsert_dim_position(df)
     platform_map = upsert_dim_platform(df["platform_norm"].dropna().unique().tolist())
-    skill_map = upsert_dim_skill(skills_df) if not skills_df.empty else {}
+    skill_map = upsert_dim_skill(entities_df)   if not entities_df.empty else {}
+    entity_map = upsert_dim_entity(entities_df)  if not entities_df.empty else {}
+
     job_id_map = load_fact_job_posting(df, time_map, location_map, company_map, position_map, platform_map)
-    if not skills_df.empty and skill_map:
-        load_bridge_job_skill(skills_df, job_id_map, skill_map)
+
+    if not entities_df.empty:
+        if skill_map:
+            load_bridge_job_skill(entities_df, job_id_map, skill_map)
+        if entity_map:
+            load_bridge_job_entity(entities_df, job_id_map, entity_map)
+
     if kaggle_embeddings_path and Path(kaggle_embeddings_path).exists():
         npz = np.load(kaggle_embeddings_path, allow_pickle=True)
         if npz["jobbert"].shape[0] > 0:
             load_embeddings(df, job_id_map, npz["jobbert"], npz["sbert"])
 
 
-def task_load_periodic(periodic_deduped_path, periodic_skills_path, periodic_embeddings_path):
-    import sys, os, numpy as np, pandas as pd
+def task_load_periodic(periodic_deduped_path, periodic_entities_path, periodic_embeddings_path):
+    import os, sys
+    import numpy as np
+    import pandas as pd
     from pathlib import Path
-    candidates = [
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
     from load.load_dimensions import (
         upsert_dim_time, upsert_dim_location, upsert_dim_company,
         upsert_dim_position, upsert_dim_platform, upsert_dim_skill,
+        upsert_dim_entity,
     )
-    from load.load_facts import load_fact_job_posting, load_bridge_job_skill, load_embeddings
+    from load.load_facts import (
+        load_fact_job_posting, load_bridge_job_skill,
+        load_bridge_job_entity, load_embeddings,
+    )
     if not periodic_deduped_path or not Path(periodic_deduped_path).exists():
         return
     df = pd.read_parquet(periodic_deduped_path)
@@ -414,20 +454,29 @@ def task_load_periodic(periodic_deduped_path, periodic_skills_path, periodic_emb
     df = df[pd.to_datetime(df["date_parsed"]).dt.year >= 2024]
     if df.empty:
         return
-    skills_df = (
-        pd.read_parquet(periodic_skills_path)
-        if (periodic_skills_path and Path(periodic_skills_path).exists())
+
+    entities_df = (
+        pd.read_parquet(periodic_entities_path)
+        if (periodic_entities_path and Path(periodic_entities_path).exists())
         else pd.DataFrame()
     )
+
     time_map = upsert_dim_time(df["date_parsed"])
     location_map = upsert_dim_location(df)
     company_map = upsert_dim_company(df)
     position_map = upsert_dim_position(df)
     platform_map = upsert_dim_platform(df["platform_norm"].dropna().unique().tolist())
-    skill_map = upsert_dim_skill(skills_df) if not skills_df.empty else {}
+    skill_map = upsert_dim_skill(entities_df)   if not entities_df.empty else {}
+    entity_map = upsert_dim_entity(entities_df)  if not entities_df.empty else {}
+
     job_id_map = load_fact_job_posting(df, time_map, location_map, company_map, position_map, platform_map)
-    if not skills_df.empty and skill_map:
-        load_bridge_job_skill(skills_df, job_id_map, skill_map)
+
+    if not entities_df.empty:
+        if skill_map:
+            load_bridge_job_skill(entities_df, job_id_map, skill_map)
+        if entity_map:
+            load_bridge_job_entity(entities_df, job_id_map, entity_map)
+
     if periodic_embeddings_path and Path(periodic_embeddings_path).exists():
         npz = np.load(periodic_embeddings_path, allow_pickle=True)
         if npz["jobbert"].shape[0] > 0:
@@ -435,16 +484,18 @@ def task_load_periodic(periodic_deduped_path, periodic_skills_path, periodic_emb
 
 
 def task_refresh_views():
-    import sys, os, psycopg2, psycopg2.extras
-    candidates = [
+    import os, sys
+    import psycopg2, psycopg2.extras
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
@@ -454,7 +505,8 @@ def task_refresh_views():
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
-            "SELECT schemaname || '.' || matviewname AS full_name FROM pg_matviews WHERE schemaname = 'public';"
+            "SELECT schemaname || '.' || matviewname AS full_name "
+            "FROM pg_matviews WHERE schemaname = 'public';"
         )
         views = [row["full_name"] for row in cur.fetchall()]
         for v in views:
@@ -471,16 +523,17 @@ def task_refresh_views():
 
 
 def task_run_forecasting():
-    import sys, os
-    candidates = [
+    import os, sys
+    _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
         "/home/inter24/dags/talent-trackk",
         "/home/inter24/inter24-dag/talent-trackk",
     ]
-    root = next((p for p in candidates if os.path.isfile(os.path.join(p, "db.py"))), None)
+    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
+    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
     if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {candidates}")
-    for sub in ["", "extract", "transform", "load", "analysis"]:
+        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
+    for sub in _SUBS_LOCAL:
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
@@ -489,7 +542,8 @@ def task_run_forecasting():
     run_forecasting(engine=get_engine())
 
 
-def _epo(task_id, python_callable, op_kwargs=None, retries=1, execution_timeout=timedelta(hours=4)):
+def _epo(task_id, python_callable, op_kwargs=None,
+         retries=1, execution_timeout=timedelta(hours=4)):
     return ExternalPythonOperator(
         task_id=task_id,
         python=VENV_PYTHON,
@@ -502,119 +556,107 @@ def _epo(task_id, python_callable, op_kwargs=None, retries=1, execution_timeout=
 
 
 with DAG(
-    dag_id="talent-trackk_group3",
-    default_args=default_args,
-    description="TalentTrack: Full ETL + Forecasting pipeline",
-    schedule="0 6 * * *",
+    dag_id="group3_talenttrack_kaggle",
+    default_args=_DEFAULT_ARGS,
+    description="TalentTrack: Kaggle ETL pipeline (every 3 hours)",
+    schedule="0 */3 * * *",
     start_date=datetime(2024, 1, 1),
     catchup=False,
     max_active_runs=1,
-    tags=["talent-trackk", "dwh", "etl"],
-) as dag:
+    tags=["talent-trackk", "dwh", "etl", "kaggle"],
+) as dag_kaggle:
 
-    t_init_db = _epo("init_db", task_init_db)
-
-    t_seed_dim_time = _epo("seed_dim_time", task_seed_dim_time)
-
-    t_extract_kaggle = _epo("extract_kaggle", task_extract_kaggle)
-
-    t_extract_periodic = _epo(
-        "extract_periodic",
-        task_extract_periodic,
-        {"execution_date": "{{ ds }}"},
-    )
-
-    t_preprocess_kaggle = _epo(
-        "preprocess_kaggle",
-        task_preprocess_kaggle,
+    k_init_db = _epo("init_db", task_init_db)
+    k_seed_time = _epo("seed_dim_time", task_seed_dim_time)
+    k_extract = _epo("extract_kaggle", task_extract_kaggle)
+    k_preprocess = _epo(
+        "preprocess_kaggle", task_preprocess_kaggle,
         {"kaggle_raw_path": "{{ ti.xcom_pull(task_ids='extract_kaggle') }}"},
     )
-
-    t_preprocess_periodic = _epo(
-        "preprocess_periodic",
-        task_preprocess_periodic,
-        {"periodic_raw_path": "{{ ti.xcom_pull(task_ids='extract_periodic') }}"},
-    )
-
-    t_ner_kaggle = _epo(
-        "ner_kaggle",
-        task_ner_kaggle,
+    k_ner = _epo(
+        "ner_kaggle", task_ner_kaggle,
         {"kaggle_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_kaggle') }}"},
     )
-
-    t_ner_periodic = _epo(
-        "ner_periodic",
-        task_ner_periodic,
-        {"periodic_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_periodic') }}"},
-    )
-
-    t_embed_kaggle = _epo(
-        "embed_kaggle",
-        task_embed_kaggle,
+    k_embed = _epo(
+        "embed_kaggle", task_embed_kaggle,
         {"kaggle_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_kaggle') }}"},
-        retries=0,
-        execution_timeout=timedelta(hours=6),
+        retries=0, execution_timeout=timedelta(hours=6),
     )
-
-    t_embed_periodic = _epo(
-        "embed_periodic",
-        task_embed_periodic,
-        {"periodic_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_periodic') }}"},
-        retries=0,
-        execution_timeout=timedelta(hours=2),
-    )
-
-    t_dedup_kaggle = _epo(
-        "dedup_kaggle",
-        task_dedup_kaggle,
+    k_dedup = _epo(
+        "dedup_kaggle", task_dedup_kaggle,
         {
             "kaggle_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_kaggle') }}",
             "kaggle_embeddings_path": "{{ ti.xcom_pull(task_ids='embed_kaggle') }}",
         },
     )
+    k_load = _epo(
+        "load_kaggle", task_load_kaggle,
+        {
+            "kaggle_deduped_path": "{{ ti.xcom_pull(task_ids='dedup_kaggle') }}",
+            "kaggle_entities_path": "{{ ti.xcom_pull(task_ids='ner_kaggle') }}",
+            "kaggle_embeddings_path":  "{{ ti.xcom_pull(task_ids='embed_kaggle') }}",
+        },
+    )
+    k_refresh = _epo("refresh_views",   task_refresh_views)
+    k_forecast = _epo("run_forecasting", task_run_forecasting)
 
-    t_dedup_periodic = _epo(
-        "dedup_periodic",
-        task_dedup_periodic,
+    (
+        k_init_db >> k_seed_time >> k_extract
+        >> k_preprocess >> [k_ner, k_embed]
+        >> k_dedup >> k_load >> k_refresh >> k_forecast
+    )
+
+
+with DAG(
+    dag_id="group3_talenttrack_jobspy",
+    default_args=_DEFAULT_ARGS,
+    description="TalentTrack: Periodic scraping pipeline (once per day)",
+    schedule="0 6 * * *",
+    start_date=datetime(2024, 1, 1),
+    catchup=False,
+    max_active_runs=1,
+    tags=["talent-trackk", "dwh", "etl", "scraping"],
+) as dag_periodic:
+
+    p_init_db = _epo("init_db", task_init_db)
+    p_seed_time = _epo("seed_dim_time", task_seed_dim_time)
+    p_extract = _epo(
+        "extract_periodic", task_extract_periodic,
+        {"execution_date": "{{ ds }}"},
+    )
+    p_preprocess = _epo(
+        "preprocess_periodic", task_preprocess_periodic,
+        {"periodic_raw_path": "{{ ti.xcom_pull(task_ids='extract_periodic') }}"},
+    )
+    p_ner = _epo(
+        "ner_periodic", task_ner_periodic,
+        {"periodic_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_periodic') }}"},
+    )
+    p_embed = _epo(
+        "embed_periodic", task_embed_periodic,
+        {"periodic_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_periodic') }}"},
+        retries=0, execution_timeout=timedelta(hours=2),
+    )
+    p_dedup = _epo(
+        "dedup_periodic", task_dedup_periodic,
         {
             "periodic_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_periodic') }}",
             "periodic_embeddings_path": "{{ ti.xcom_pull(task_ids='embed_periodic') }}",
         },
     )
-
-    t_load_kaggle = _epo(
-        "load_kaggle",
-        task_load_kaggle,
-        {
-            "kaggle_deduped_path": "{{ ti.xcom_pull(task_ids='dedup_kaggle') }}",
-            "kaggle_skills_path": "{{ ti.xcom_pull(task_ids='ner_kaggle') }}",
-            "kaggle_embeddings_path": "{{ ti.xcom_pull(task_ids='embed_kaggle') }}",
-        },
-    )
-
-    t_load_periodic = _epo(
-        "load_periodic",
-        task_load_periodic,
+    p_load = _epo(
+        "load_periodic", task_load_periodic,
         {
             "periodic_deduped_path": "{{ ti.xcom_pull(task_ids='dedup_periodic') }}",
-            "periodic_skills_path": "{{ ti.xcom_pull(task_ids='ner_periodic') }}",
+            "periodic_entities_path": "{{ ti.xcom_pull(task_ids='ner_periodic') }}",
             "periodic_embeddings_path": "{{ ti.xcom_pull(task_ids='embed_periodic') }}",
         },
     )
+    p_refresh = _epo("refresh_views", task_refresh_views)
+    p_forecast = _epo("run_forecasting", task_run_forecasting)
 
-    t_refresh_views = _epo("refresh_views", task_refresh_views)
-    t_run_forecasting = _epo("run_forecasting", task_run_forecasting)
-
-    t_init_db >> t_seed_dim_time >> [t_extract_kaggle, t_extract_periodic]
-
-    t_extract_kaggle >> t_preprocess_kaggle
-    t_preprocess_kaggle >> [t_ner_kaggle, t_embed_kaggle]
-    [t_ner_kaggle, t_embed_kaggle] >> t_dedup_kaggle
-    t_dedup_kaggle >> t_load_kaggle
-
-    t_extract_periodic >> t_preprocess_periodic
-    t_preprocess_periodic >> [t_ner_periodic, t_embed_periodic]
-    [t_ner_periodic, t_embed_periodic] >> t_dedup_periodic
-    t_dedup_periodic >> t_load_periodic
-
-    [t_load_kaggle, t_load_periodic] >> t_refresh_views >> t_run_forecasting
+    (
+        p_init_db >> p_seed_time >> p_extract
+        >> p_preprocess >> [p_ner, p_embed]
+        >> p_dedup >> p_load >> p_refresh >> p_forecast
+    )

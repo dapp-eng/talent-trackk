@@ -11,17 +11,17 @@ logger = logging.getLogger(__name__)
 KAGGLE_BATCH_LIMIT = 150
 
 LINKEDIN_COLUMN_MAP = {
-    "title":           ["title", "job_title", "position", "job title"],
-    "company":         ["company_name", "company", "employer", "organization"],
-    "location":        ["location", "job_location", "formatted_location", "city"],
-    "description":     ["description", "job_description", "details", "body"],
-    "date_posted":     ["listed_time", "original_listed_time", "date_posted",
-                        "posted_date", "post_date", "date"],
-    "salary_min":      ["min_salary", "salary_min", "normalized_salary",
+    "title": ["title", "job_title", "position", "job title"],
+    "company": ["company_name", "company", "employer", "organization"],
+    "location": ["location", "job_location", "formatted_location", "city"],
+    "description": ["description", "job_description", "details", "body"],
+    "date_posted": ["listed_time", "original_listed_time", "date_posted",
+                    "posted_date", "post_date", "date"],
+    "salary_min": ["min_salary", "salary_min", "normalized_salary",
                         "compensation_min", "salary_from"],
-    "salary_max":      ["max_salary", "salary_max", "compensation_max", "salary_to"],
-    "is_remote":       ["remote_allowed", "is_remote", "remote", "work_from_home"],
-    "platform":        ["source", "platform", "site", "job_board"],
+    "salary_max": ["max_salary", "salary_max", "compensation_max", "salary_to"],
+    "is_remote": ["remote_allowed", "is_remote", "remote", "work_from_home"],
+    "platform": ["source", "platform", "site", "job_board"],
     "employment_type": ["formatted_work_type", "employment_type", "job_type",
                         "work_type", "type"],
 }
@@ -62,8 +62,8 @@ def _parse_listed_time(val) -> str:
 
 def _make_hash(row: pd.Series) -> str:
     company = str(row.get("company") or "").strip().lower()
-    title   = str(row.get("title")   or "").strip().lower()
-    date    = str(row.get("date_posted") or "").strip()
+    title = str(row.get("title")   or "").strip().lower()
+    date = str(row.get("date_posted") or "").strip()
     return hashlib.md5(f"{company}|{title}|{date}".encode("utf-8")).hexdigest()
 
 
@@ -90,6 +90,25 @@ def _resolve_company_names(df: pd.DataFrame, src_dir: Path) -> pd.DataFrame:
     return df
 
 
+def _load_existing_hashes() -> set:
+    try:
+        from db import get_connection
+        import psycopg2.extras
+        conn = get_connection()
+        try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT DISTINCT source_hash FROM fact_job_posting;")
+            hashes = {r["source_hash"] for r in cur.fetchall()}
+            logger.info(f"Loaded {len(hashes)} existing hashes from DB.")
+            return hashes
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning(f"Could not load existing hashes from DB: {e}. "
+                       "Proceeding without cross-run dedup.")
+        return set()
+
+
 def extract_kaggle(path: str = None) -> Path:
     try:
         src = Path(path) if path else KAGGLE_DATASET_PATH
@@ -114,16 +133,17 @@ def extract_kaggle(path: str = None) -> Path:
                 )
 
         out_path = DATA_PROCESSED_DIR / "kaggle_staged.parquet"
-        src_dir = src.parent
+        src_dir  = src.parent
 
-        seen_hashes: set = set()
+        existing_db_hashes: set = _load_existing_hashes()
+
+        seen_hashes: set = set(existing_db_hashes)
         output_chunks: list = []
 
         reader = pd.read_csv(src, chunksize=500, low_memory=False, on_bad_lines="skip")
 
         for i, chunk in enumerate(reader):
             chunk = _normalize_columns(chunk)
-
             chunk = _resolve_company_names(chunk, src_dir)
 
             if "date_posted" in chunk.columns:
@@ -137,7 +157,7 @@ def extract_kaggle(path: str = None) -> Path:
             chunk["source_hash"] = chunk.apply(_make_hash, axis=1)
             chunk["extraction_ts"] = datetime.utcnow().isoformat()
             chunk["data_source"] = "kaggle_linkedin"
-
+            
             new_rows = chunk[~chunk["source_hash"].isin(seen_hashes)].copy()
             if new_rows.empty:
                 continue
@@ -158,7 +178,7 @@ def extract_kaggle(path: str = None) -> Path:
                 break
 
         if not output_chunks:
-            logger.warning("Kaggle extraction: no rows collected.")
+            logger.warning("Kaggle extraction: no new rows (all already in DB or empty source).")
             df = pd.DataFrame(columns=EMPTY_COLS)
         else:
             df = pd.concat(output_chunks, ignore_index=True)
@@ -168,7 +188,7 @@ def extract_kaggle(path: str = None) -> Path:
         df = df[keep_cols + extra_cols]
 
         df.to_parquet(out_path, index=False, engine="pyarrow")
-        logger.info(f"Kaggle extraction done: {len(df)} rows → {out_path}")
+        logger.info(f"Kaggle extraction done: {len(df)} new rows → {out_path}")
 
         meta = {
             "source": "kaggle_linkedin",

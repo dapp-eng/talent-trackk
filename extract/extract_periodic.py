@@ -20,7 +20,7 @@ from config import (
 logger = logging.getLogger(__name__)
 
 PERIODIC_ROW_LIMIT = 100
-_MAX_TERMS     = 5
+_MAX_TERMS = 5
 _MAX_LOCATIONS = 4
 
 COLUMN_RENAME = {
@@ -94,6 +94,25 @@ def _write_empty(out_path: Path, ts: str, log: dict) -> Path:
     return out_path
 
 
+def _load_existing_hashes() -> set:
+    try:
+        from db import get_connection
+        import psycopg2.extras
+        conn = get_connection()
+        try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT DISTINCT source_hash FROM fact_job_posting;")
+            hashes = {r["source_hash"] for r in cur.fetchall()}
+            logger.info(f"Periodic: loaded {len(hashes)} existing hashes from DB.")
+            return hashes
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning(f"Could not load existing hashes from DB (periodic): {e}. "
+                       "Proceeding without cross-run dedup.")
+        return set()
+
+
 def scrape_periodic(execution_date: str = None) -> Path:
     PERIODIC_RAW_PATH.mkdir(parents=True, exist_ok=True)
 
@@ -117,6 +136,8 @@ def scrape_periodic(execution_date: str = None) -> Path:
         )
         return _write_empty(out_path, ts, log)
 
+    existing_db_hashes: set = _load_existing_hashes()
+
     terms = JOBSPY_SEARCH_TERMS[:_MAX_TERMS]
     locations = JOBSPY_GLOBAL_LOCATIONS[:_MAX_LOCATIONS]
 
@@ -125,8 +146,8 @@ def scrape_periodic(execution_date: str = None) -> Path:
         f"cap={PERIODIC_ROW_LIMIT} rows"
     )
 
-    seen_hashes: set = set()
-    all_frames:  list = []
+    seen_hashes: set = set(existing_db_hashes)
+    all_frames: list = []
     total_unique = 0
     reached_cap = False
 
@@ -149,6 +170,7 @@ def scrape_periodic(execution_date: str = None) -> Path:
 
                 if not chunk.empty:
                     chunk["source_hash"] = chunk.apply(_make_hash, axis=1)
+                    
                     new_rows = chunk[~chunk["source_hash"].isin(seen_hashes)].copy()
 
                     remaining = PERIODIC_ROW_LIMIT - total_unique
@@ -172,18 +194,21 @@ def scrape_periodic(execution_date: str = None) -> Path:
             time.sleep(random.uniform(1.5, 3.0))
 
     if not all_frames:
-        logger.warning("Periodic scrape: no data collected.")
+        logger.warning("Periodic scrape: no new data collected.")
         return _write_empty(out_path, ts, log)
 
     df_all = pd.concat(all_frames, ignore_index=True)
-
+    
     before = len(df_all)
     df_all = df_all.drop_duplicates(subset=["source_hash"])
     log["skipped"] = before - len(df_all)
 
     df_all.to_parquet(out_path, index=False, engine="pyarrow")
-    (DATA_PROCESSED_DIR / f"periodic_{ts}_staged.parquet").parent.mkdir(parents=True, exist_ok=True)
-    df_all.to_parquet(DATA_PROCESSED_DIR / f"periodic_{ts}_staged.parquet", index=False, engine="pyarrow")
+    DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    df_all.to_parquet(
+        DATA_PROCESSED_DIR / f"periodic_{ts}_staged.parquet",
+        index=False, engine="pyarrow",
+    )
 
     log["total"] = len(df_all)
     (PERIODIC_RAW_PATH / f"periodic_{ts}_log.json").write_text(json.dumps(log, indent=2))

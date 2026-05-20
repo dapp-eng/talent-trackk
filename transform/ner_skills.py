@@ -1,149 +1,156 @@
 import re
-import json
+import logging
 import pandas as pd
-import numpy as np
 from pathlib import Path
-from config import DATA_PROCESSED_DIR
+from config import DATA_PROCESSED_DIR, NER_AGGREGATION
 
-SKILL_VOCABULARY = {
-    "Python": ("Programming Language", "General"),
-    "SQL": ("Programming Language", "Data"),
-    "R": ("Programming Language", "Data"),
-    "Scala": ("Programming Language", "Data"),
-    "Java": ("Programming Language", "General"),
-    "Go": ("Programming Language", "General"),
-    "Rust": ("Programming Language", "General"),
-    "JavaScript": ("Programming Language", "Web"),
-    "TypeScript": ("Programming Language", "Web"),
-    "C++": ("Programming Language", "Systems"),
-    "C#": ("Programming Language", "Systems"),
-    "Spark": ("Big Data", "Data Engineering"),
-    "Hadoop": ("Big Data", "Data Engineering"),
-    "Kafka": ("Messaging", "Data Engineering"),
-    "Flink": ("Stream Processing", "Data Engineering"),
-    "Airflow": ("Orchestration", "Data Engineering"),
-    "dbt": ("Transformation", "Data Engineering"),
-    "Databricks": ("Platform", "Data Engineering"),
-    "Snowflake": ("Data Warehouse", "Data Engineering"),
-    "Redshift": ("Data Warehouse", "Data Engineering"),
-    "BigQuery": ("Data Warehouse", "Data Engineering"),
-    "PostgreSQL": ("Database", "Data"),
-    "MySQL": ("Database", "Data"),
-    "MongoDB": ("Database", "Data"),
-    "Cassandra": ("Database", "Data"),
-    "Elasticsearch": ("Search", "Data"),
-    "Redis": ("Cache", "Data Engineering"),
-    "AWS": ("Cloud", "Cloud Infrastructure"),
-    "GCP": ("Cloud", "Cloud Infrastructure"),
-    "Azure": ("Cloud", "Cloud Infrastructure"),
-    "Kubernetes": ("Container Orchestration", "DevOps"),
-    "Docker": ("Containerization", "DevOps"),
-    "Terraform": ("IaC", "DevOps"),
-    "Ansible": ("Configuration Management", "DevOps"),
-    "Jenkins": ("CI/CD", "DevOps"),
-    "GitHub Actions": ("CI/CD", "DevOps"),
-    "TensorFlow": ("ML Framework", "Machine Learning"),
-    "PyTorch": ("ML Framework", "Machine Learning"),
-    "scikit-learn": ("ML Library", "Machine Learning"),
-    "Hugging Face": ("NLP Framework", "Machine Learning"),
-    "LangChain": ("LLM Framework", "Machine Learning"),
-    "XGBoost": ("ML Library", "Machine Learning"),
-    "LightGBM": ("ML Library", "Machine Learning"),
-    "Pandas": ("Data Library", "Data"),
-    "NumPy": ("Data Library", "Data"),
-    "Power BI": ("BI Tool", "Business Intelligence"),
-    "Tableau": ("BI Tool", "Business Intelligence"),
-    "Looker": ("BI Tool", "Business Intelligence"),
-    "Metabase": ("BI Tool", "Business Intelligence"),
-    "Excel": ("Spreadsheet", "Business Intelligence"),
-    "MLflow": ("MLOps", "Machine Learning"),
-    "Kubeflow": ("MLOps", "Machine Learning"),
-    "FastAPI": ("Web Framework", "Engineering"),
-    "Django": ("Web Framework", "Engineering"),
-    "Flask": ("Web Framework", "Engineering"),
-    "React": ("Frontend", "Engineering"),
-    "Vue": ("Frontend", "Engineering"),
-    "Node.js": ("Runtime", "Engineering"),
-    "REST API": ("Architecture", "Engineering"),
-    "GraphQL": ("API", "Engineering"),
-    "microservices": ("Architecture", "Engineering"),
-    "CI/CD": ("DevOps Practice", "DevOps"),
-    "Git": ("Version Control", "General"),
-    "Linux": ("OS", "Systems"),
-    "Statistics": ("Math", "Data"),
-    "Machine Learning": ("Concept", "Machine Learning"),
-    "Deep Learning": ("Concept", "Machine Learning"),
-    "NLP": ("Concept", "Machine Learning"),
-    "Computer Vision": ("Concept", "Machine Learning"),
-    "Time Series": ("Concept", "Data"),
-    "Forecasting": ("Concept", "Data"),
-    "A/B Testing": ("Analytics", "Data"),
-    "Agile": ("Methodology", "General"),
-    "Scrum": ("Methodology", "General"),
-    "Communication": ("Soft Skill", "General"),
-    "Leadership": ("Soft Skill", "General"),
-    "Problem Solving": ("Soft Skill", "General"),
-    "Team Player": ("Soft Skill", "General"),
-    "S3": ("Cloud Storage", "Cloud Infrastructure"),
-    "Lambda": ("Serverless", "Cloud Infrastructure"),
-    "EC2": ("Compute", "Cloud Infrastructure"),
-    "SageMaker": ("ML Platform", "Machine Learning"),
-    "Vertex AI": ("ML Platform", "Machine Learning"),
-    "Azure ML": ("ML Platform", "Machine Learning"),
-    "Prometheus": ("Monitoring", "DevOps"),
-    "Grafana": ("Monitoring", "DevOps"),
-}
+logger = logging.getLogger(__name__)
 
-_COMPILED_PATTERNS = None
+NER_KNOWLEDGE_MODEL = "jjzha/jobbert_knowledge_extraction"
+NER_SKILL_MODEL = "jjzha/jobbert_skill_extraction"
+
+_pipeline_knowledge = None
+_pipeline_skill = None
 
 
-def _get_patterns():
-    global _COMPILED_PATTERNS
-    if _COMPILED_PATTERNS is None:
-        _COMPILED_PATTERNS = {}
-        for skill in SKILL_VOCABULARY:
-            escaped = re.escape(skill)
-            _COMPILED_PATTERNS[skill] = re.compile(
-                r"(?<![a-zA-Z0-9\-])" + escaped + r"(?![a-zA-Z0-9\-])",
-                re.IGNORECASE,
-            )
-    return _COMPILED_PATTERNS
+def _load_pipeline(model_id: str):
+    try:
+        from transformers import (
+            AutoTokenizer,
+            AutoModelForTokenClassification,
+            pipeline,
+        )
+        logger.info(f"Loading NER model: {model_id}")
+        tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True)
+        model = AutoModelForTokenClassification.from_pretrained(model_id)
+        pipe = pipeline(
+            "ner",
+            model=model,
+            tokenizer=tokenizer,
+            aggregation_strategy=NER_AGGREGATION,
+            device=-1,
+        )
+        logger.info(f"NER pipeline loaded: {model_id}")
+        return pipe
+    except Exception as e:
+        logger.error(f"Failed to load NER model '{model_id}': {e}")
+        return None
 
 
-def extract_skills_from_text(text: str) -> list:
-    if not isinstance(text, str) or len(text.strip()) == 0:
+def _get_pipeline_knowledge():
+    global _pipeline_knowledge
+    if _pipeline_knowledge is None:
+        _pipeline_knowledge = _load_pipeline(NER_KNOWLEDGE_MODEL)
+    return _pipeline_knowledge
+
+
+def _get_pipeline_skill():
+    global _pipeline_skill
+    if _pipeline_skill is None:
+        _pipeline_skill = _load_pipeline(NER_SKILL_MODEL)
+    return _pipeline_skill
+
+
+def _normalize_entity(word: str) -> str:
+    word = re.sub(r"\s+", " ", word).strip()
+    word = re.sub(r"^[^\w]+|[^\w]+$", "", word)
+    return word
+
+
+def _run_pipeline(pipe, text: str, source_model: str) -> list:
+    if pipe is None or not isinstance(text, str) or not text.strip():
         return []
-    patterns = _get_patterns()
-    found = []
-    for skill, pattern in patterns.items():
-        if pattern.search(text):
-            found.append(skill)
-    return found
+    try:
+        entities = pipe(text[:2000])
+    except Exception as e:
+        logger.warning(f"NER inference failed ({source_model}): {e}")
+        return []
+
+    results = []
+    seen = set()
+    for ent in entities:
+        label = (ent.get("entity_group") or ent.get("entity") or "").upper()
+        if not label or label == "O":
+            continue
+        word = _normalize_entity(ent.get("word", ""))
+        if not word or len(word) < 2:
+            continue
+        key = (word.lower(), label)
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append({
+            "entity_text": word,
+            "entity_type": label.title(),
+            "source_model": source_model,
+            "extraction_confidence": round(float(ent.get("score", 0.0)), 4),
+        })
+    return results
 
 
-def extract_skills_dataframe(df: pd.DataFrame,
-                              text_col: str = "description_clean") -> pd.DataFrame:
+def extract_entities_from_text(text: str) -> list:
+    results = []
+    results.extend(_run_pipeline(_get_pipeline_knowledge(), text, NER_KNOWLEDGE_MODEL))
+    results.extend(_run_pipeline(_get_pipeline_skill(),     text, NER_SKILL_MODEL))
+    seen_final = set()
+    deduped = []
+    for r in results:
+        key = (r["entity_text"].lower(), r["entity_type"])
+        if key not in seen_final:
+            seen_final.add(key)
+            deduped.append(r)
+    return deduped
+
+
+def extract_entities_dataframe(
+    df: pd.DataFrame,
+    text_col: str = "description_clean",
+    batch_size: int = 32,
+) -> pd.DataFrame:
+    pipe_k = _get_pipeline_knowledge()
+    pipe_s = _get_pipeline_skill()
+
+    if pipe_k is None and pipe_s is None:
+        logger.warning("Both NER pipelines unavailable. Returning empty DataFrame.")
+        return pd.DataFrame(columns=[
+            "source_hash", "entity_text", "entity_type",
+            "source_model", "extraction_confidence",
+        ])
+
+    texts = df[text_col].fillna("").astype(str).tolist()
+    src_hashes = (
+        df["source_hash"].astype(str).tolist()
+        if "source_hash" in df.columns
+        else [str(i) for i in df.index]
+    )
+
     records = []
-    for idx, row in df.iterrows():
-        skills = extract_skills_from_text(row.get(text_col, ""))
-        src_hash = row.get("source_hash", str(idx))
-        for skill in skills:
-            stype, sdomain = SKILL_VOCABULARY.get(skill, ("Other", "Other"))
-            records.append({
-                "source_hash": src_hash,
-                "skill_name": skill,
-                "skill_type": stype,
-                "skill_domain": sdomain,
-                "extraction_confidence": 0.90,
-            })
+    for batch_start in range(0, len(texts), batch_size):
+        batch_texts = texts[batch_start: batch_start + batch_size]
+        batch_hashes = src_hashes[batch_start: batch_start + batch_size]
+        for text, src_hash in zip(batch_texts, batch_hashes):
+            entities = extract_entities_from_text(text)
+            for e in entities:
+                records.append({
+                    "source_hash": src_hash,
+                    "entity_text": e["entity_text"],
+                    "entity_type": e["entity_type"],
+                    "source_model": e["source_model"],
+                    "extraction_confidence": e["extraction_confidence"],
+                })
+        if (batch_start // batch_size) % 10 == 0:
+            logger.info(
+                f"NER progress: {min(batch_start + batch_size, len(texts))}/{len(texts)}"
+            )
+
     return pd.DataFrame(records)
 
 
 def run_ner(preprocessed_path: str) -> Path:
     df = pd.read_parquet(preprocessed_path)
-    print(f"Running NER on {len(df)} rows...")
-    skills_df = extract_skills_dataframe(df)
-    out_path = DATA_PROCESSED_DIR / (Path(preprocessed_path).stem + "_skills.parquet")
-    skills_df.to_parquet(out_path, index=False, engine="pyarrow")
-    print(f"NER done: {len(skills_df)} skill records → {out_path}")
+    logger.info(f"Running NER on {len(df)} rows (knowledge + skill models)")
+    entities_df = extract_entities_dataframe(df)
+    out_path = DATA_PROCESSED_DIR / (Path(preprocessed_path).stem + "_entities.parquet")
+    entities_df.to_parquet(out_path, index=False, engine="pyarrow")
+    logger.info(f"NER done: {len(entities_df)} entity records → {out_path}")
     return out_path

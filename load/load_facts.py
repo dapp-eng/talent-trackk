@@ -28,32 +28,31 @@ def _safe_int(val) -> int:
 
 
 def _resolve_location_id(row: pd.Series, location_map: dict):
-    city = str(row.get("loc_city",     "") or "")
+    city = str(row.get("loc_city", "") or "")
     province = str(row.get("loc_province", "") or "")
-    country = str(row.get("loc_country",  "") or "Unknown")
-    region = str(row.get("global_region","") or "Other")
+    country = str(row.get("loc_country", "") or "Unknown")
+    region = str(row.get("global_region", "") or "Other")
 
     key = (city, province, country, region)
     if key in location_map:
         return location_map[key]
-
     for k, v in location_map.items():
         if k[2] == country and k[3] == region:
             return v
-
     for k, v in location_map.items():
         if k[3] == region:
             return v
-
     return None
 
 
-def load_fact_job_posting(df: pd.DataFrame,
-                           time_map: dict,
-                           location_map: dict,
-                           company_map: dict,
-                           position_map: dict,
-                           platform_map: dict) -> dict:
+def load_fact_job_posting(
+    df: pd.DataFrame,
+    time_map: dict,
+    location_map: dict,
+    company_map: dict,
+    position_map: dict,
+    platform_map: dict,
+) -> dict:
     rows = []
     skipped = 0
 
@@ -65,22 +64,18 @@ def load_fact_job_posting(df: pd.DataFrame,
             continue
 
         location_id = _resolve_location_id(row, location_map)
-
         company_name = str(row.get("company_clean", "Unknown")).strip() or "Unknown"
         company_id = company_map.get(company_name, company_map.get("Unknown"))
-
-        title = str(row.get("title_clean", "")).strip()[:255] or "unknown"
-        level = str(row.get("job_level",    "Unknown"))
-        cat = str(row.get("job_category", "Other"))
+        title = str(row.get("title_clean",   "")).strip()[:255] or "unknown"
+        level = str(row.get("job_level",     "Unknown"))
+        cat = str(row.get("job_category",  "Other"))
         position_id = position_map.get((title, level, cat))
-
         platform = str(row.get("platform_norm", "Unknown")).strip() or "Unknown"
         platform_id = platform_map.get(platform, platform_map.get("Unknown"))
 
         posting_date = row.get("date_parsed")
         if pd.notna(posting_date):
-            age_days = (pd.Timestamp.now() - pd.Timestamp(posting_date)).days
-            age_days = max(0, _safe_int(age_days))
+            age_days = max(0, _safe_int((pd.Timestamp.now() - pd.Timestamp(posting_date)).days))
         else:
             age_days = None
 
@@ -93,7 +88,7 @@ def load_fact_job_posting(df: pd.DataFrame,
             1,
             age_days,
             bool(row.get("has_salary", False)),
-            bool(row.get("is_remote", False)),
+            bool(row.get("is_remote",  False)),
             _safe_float(row.get("salary_min")),
             _safe_float(row.get("salary_max")),
             str(row.get("source_hash", ""))[:64],
@@ -102,7 +97,6 @@ def load_fact_job_posting(df: pd.DataFrame,
 
     if skipped > 0:
         logger.warning(f"load_fact: skipped {skipped} rows with no time_id match")
-
     if not rows:
         logger.warning("load_fact: no rows to insert")
         return {}
@@ -124,7 +118,7 @@ def load_fact_job_posting(df: pd.DataFrame,
             page_size=500,
         )
         conn.commit()
-        logger.info(f"load_fact: inserted up to {len(rows)} rows (deduped on conflict)")
+        logger.info(f"load_fact: inserted up to {len(rows)} rows")
     except Exception:
         conn.rollback()
         raise
@@ -137,7 +131,7 @@ def load_fact_job_posting(df: pd.DataFrame,
         hashes = [r[11] for r in rows]
         cur2.execute(
             "SELECT job_id, source_hash FROM fact_job_posting WHERE source_hash = ANY(%s);",
-            (hashes,)
+            (hashes,),
         )
         job_id_map = {r["source_hash"]: r["job_id"] for r in cur2.fetchall()}
     finally:
@@ -147,20 +141,25 @@ def load_fact_job_posting(df: pd.DataFrame,
     return job_id_map
 
 
-def load_bridge_job_skill(skills_df: pd.DataFrame,
-                           source_hash_to_job_id: dict,
-                           skill_id_map: dict):
+def load_bridge_job_skill(
+    entities_df: pd.DataFrame,
+    source_hash_to_job_id: dict,
+    skill_id_map: dict,
+):
+    mask = entities_df["entity_type"].str.contains("Knowledge|Skill", case=False, na=False)
+    df = entities_df[mask]
+
     rows = []
-    for _, row in skills_df.iterrows():
-        job_id   = source_hash_to_job_id.get(str(row["source_hash"]))
-        skill_id = skill_id_map.get(str(row["skill_name"]))
+    for _, row in df.iterrows():
+        job_id = source_hash_to_job_id.get(str(row["source_hash"]))
+        skill_id = skill_id_map.get(str(row["entity_text"]))
         if job_id is None or skill_id is None:
             continue
         confidence = _safe_float(row.get("extraction_confidence", 0.9)) or 0.9
         rows.append((int(job_id), int(skill_id), round(confidence, 4)))
 
     if not rows:
-        logger.warning("load_bridge: no rows to insert")
+        logger.warning("load_bridge_job_skill: no rows to insert")
         return
 
     conn = get_connection()
@@ -177,7 +176,7 @@ def load_bridge_job_skill(skills_df: pd.DataFrame,
             page_size=1000,
         )
         conn.commit()
-        logger.info(f"load_bridge: {len(rows)} skill-job links inserted")
+        logger.info(f"load_bridge_job_skill: {len(rows)} rows inserted")
     except Exception:
         conn.rollback()
         raise
@@ -185,10 +184,52 @@ def load_bridge_job_skill(skills_df: pd.DataFrame,
         conn.close()
 
 
-def load_embeddings(df: pd.DataFrame,
-                     source_hash_to_job_id: dict,
-                     jobbert_array: np.ndarray,
-                     sbert_array: np.ndarray):
+def load_bridge_job_entity(
+    entities_df: pd.DataFrame,
+    source_hash_to_job_id: dict,
+    entity_id_map: dict,
+):
+    rows = []
+    for _, row in entities_df.iterrows():
+        job_id = source_hash_to_job_id.get(str(row["source_hash"]))
+        entity_id = entity_id_map.get((str(row["entity_text"]), str(row["entity_type"])))
+        if job_id is None or entity_id is None:
+            continue
+        confidence = _safe_float(row.get("extraction_confidence", 0.0)) or 0.0
+        rows.append((int(job_id), int(entity_id), round(confidence, 4)))
+
+    if not rows:
+        logger.warning("load_bridge_job_entity: no rows to insert")
+        return
+
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        psycopg2.extras.execute_values(
+            cur,
+            """
+            INSERT INTO bridge_job_entity (job_id, entity_id, extraction_confidence)
+            VALUES %s
+            ON CONFLICT (job_id, entity_id) DO NOTHING;
+            """,
+            rows,
+            page_size=1000,
+        )
+        conn.commit()
+        logger.info(f"load_bridge_job_entity: {len(rows)} rows inserted")
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def load_embeddings(
+    df: pd.DataFrame,
+    source_hash_to_job_id: dict,
+    jobbert_array: np.ndarray,
+    sbert_array: np.ndarray,
+):
     if jobbert_array.shape[0] == 0:
         logger.warning("load_embeddings: empty arrays, skipping")
         return
@@ -199,9 +240,7 @@ def load_embeddings(df: pd.DataFrame,
         job_id = source_hash_to_job_id.get(h)
         if job_id is None:
             continue
-        jb = jobbert_array[i].tolist()
-        sb = sbert_array[i].tolist()
-        rows.append((int(job_id), jb, sb))
+        rows.append((int(job_id), jobbert_array[i].tolist(), sbert_array[i].tolist()))
 
     if not rows:
         logger.warning("load_embeddings: no matching job_ids found")
