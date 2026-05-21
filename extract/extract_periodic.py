@@ -12,7 +12,6 @@ from config import (
     JOBSPY_GLOBAL_LOCATIONS,
     JOBSPY_RESULTS_PER_SEARCH,
     JOBSPY_SITES,
-    JOBSPY_HOURS_OLD,
     PERIODIC_RAW_PATH,
     DATA_PROCESSED_DIR,
 )
@@ -71,7 +70,6 @@ def _scrape_one(scrape_jobs, term: str, location: str, log: dict) -> pd.DataFram
             search_term=term,
             location=location,
             results_wanted=JOBSPY_RESULTS_PER_SEARCH,
-            hours_old=JOBSPY_HOURS_OLD,
             verbose=0,
         )
         if df is None or len(df) == 0:
@@ -170,7 +168,6 @@ def scrape_periodic(execution_date: str = None) -> Path:
 
                 if not chunk.empty:
                     chunk["source_hash"] = chunk.apply(_make_hash, axis=1)
-                    
                     new_rows = chunk[~chunk["source_hash"].isin(seen_hashes)].copy()
 
                     remaining = PERIODIC_ROW_LIMIT - total_unique
@@ -198,7 +195,7 @@ def scrape_periodic(execution_date: str = None) -> Path:
         return _write_empty(out_path, ts, log)
 
     df_all = pd.concat(all_frames, ignore_index=True)
-    
+
     before = len(df_all)
     df_all = df_all.drop_duplicates(subset=["source_hash"])
     log["skipped"] = before - len(df_all)
