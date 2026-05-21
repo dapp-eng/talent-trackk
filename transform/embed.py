@@ -1,5 +1,6 @@
 import gc
-import torch
+import time
+import requests
 import numpy as np
 import pandas as pd
 import logging
@@ -7,200 +8,129 @@ from pathlib import Path
 
 from config import (
     JOBBERT_MODEL, SBERT_MODEL,
-    JOBBERT_MAX_TOKENS, JOBBERT_CHUNK_OVERLAP,
     EMBEDDING_DIM, SBERT_DIM,
-    DATA_PROCESSED_DIR,
+    DATA_PROCESSED_DIR, HF_API_TOKEN,
 )
 
 logger = logging.getLogger(__name__)
 
-_jobbert_tokenizer = None
-_jobbert_model = None
-_sbert_model = None
-
-CONTENT_TOKENS = JOBBERT_MAX_TOKENS - 2
-STRIDE = CONTENT_TOKENS - JOBBERT_CHUNK_OVERLAP
-
-if CONTENT_TOKENS != 510:
-    logger.warning(f"CONTENT_TOKENS is {CONTENT_TOKENS}, expected 510. Check config.")
+HF_API_URL_JOBBERT = f"https://api-inference.huggingface.co/models/{JOBBERT_MODEL}"
+HF_API_URL_SBERT = f"https://api-inference.huggingface.co/models/{SBERT_MODEL}"
+HF_HEADERS = {"Authorization": f"Bearer {HF_API_TOKEN}"}
 
 
-def _load_jobbert():
-    global _jobbert_tokenizer, _jobbert_model
-    if _jobbert_tokenizer is None:
-        try:
-            from transformers import AutoTokenizer, AutoModel
-            logger.info(f"Loading JobBERT: {JOBBERT_MODEL}")
-            _jobbert_tokenizer = AutoTokenizer.from_pretrained(JOBBERT_MODEL)
-            _jobbert_model = AutoModel.from_pretrained(JOBBERT_MODEL)
-            _jobbert_model.eval()
-            if torch.cuda.is_available():
-                _jobbert_model = _jobbert_model.cuda()
-                logger.info("JobBERT loaded on GPU")
-            else:
-                logger.info("JobBERT loaded on CPU")
-        except Exception as e:
-            logger.error(f"Failed to load JobBERT: {e}. Will use zero vectors.")
-            _jobbert_tokenizer = None
-            _jobbert_model = None
-    return _jobbert_tokenizer, _jobbert_model
-
-
-def _load_sbert():
-    global _sbert_model
-    if _sbert_model is None:
-        try:
-            from sentence_transformers import SentenceTransformer
-            logger.info(f"Loading SBERT: {SBERT_MODEL}")
-            _sbert_model = SentenceTransformer(SBERT_MODEL)
-        except Exception as e:
-            logger.error(f"Failed to load SBERT: {e}. Will use zero vectors.")
-            _sbert_model = None
-    return _sbert_model
-
-
-def _mean_pool(last_hidden_state: torch.Tensor,
-               attention_mask: torch.Tensor) -> torch.Tensor:
-    mask_expanded = attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
-    summed = torch.sum(last_hidden_state * mask_expanded, dim=1)
-    counts = torch.clamp(mask_expanded.sum(dim=1), min=1e-9)
-    return summed / counts
-
-
-def _embed_text_jobbert_chunked(text: str, tokenizer, model) -> np.ndarray:
-    if not text or not isinstance(text, str) or not text.strip():
-        return np.zeros(EMBEDDING_DIM, dtype=np.float32)
-
-    all_input_ids = tokenizer.encode(text, add_special_tokens=False)
-
-    if len(all_input_ids) == 0:
-        return np.zeros(EMBEDDING_DIM, dtype=np.float32)
-
-    chunk_embeddings = []
+def _chunk_text(text: str, max_chars: int = 1800, overlap_chars: int = 200) -> list:
+    if len(text) <= max_chars:
+        return [text]
+    chunks = []
     start = 0
-
-    while start < len(all_input_ids):
-        end = start + STRIDE
-        chunk_ids = all_input_ids[start:end]
-
-        input_ids = [tokenizer.cls_token_id] + chunk_ids + [tokenizer.sep_token_id]
-        pad_len = JOBBERT_MAX_TOKENS - len(input_ids)
-
-        if pad_len < 0:
-            input_ids = input_ids[:JOBBERT_MAX_TOKENS]
-            pad_len = 0
-
-        attention_mask = [1] * len(input_ids) + [0] * pad_len
-        input_ids = input_ids + [tokenizer.pad_token_id] * pad_len
-
-        input_ids_t = torch.tensor([input_ids])
-        attention_mask_t = torch.tensor([attention_mask])
-
-        if torch.cuda.is_available():
-            input_ids_t = input_ids_t.cuda()
-            attention_mask_t = attention_mask_t.cuda()
-
-        with torch.no_grad():
-            output = model(input_ids=input_ids_t, attention_mask=attention_mask_t)
-
-        chunk_emb = _mean_pool(output.last_hidden_state, attention_mask_t)
-        chunk_embeddings.append(chunk_emb.cpu().float().squeeze(0).numpy())
-
-        if end >= len(all_input_ids):
+    while start < len(text):
+        end = start + max_chars
+        chunks.append(text[start:end])
+        if end >= len(text):
             break
+        start += max_chars - overlap_chars
+    return chunks
 
-        start += STRIDE
 
-    if not chunk_embeddings:
-        return np.zeros(EMBEDDING_DIM, dtype=np.float32)
-
-    token_counts = []
-    start = 0
-    for _ in chunk_embeddings:
-        end = start + STRIDE
-        token_counts.append(min(STRIDE, len(all_input_ids) - start))
-        start += STRIDE
-
-    weights = np.array(token_counts, dtype=np.float32)
-    weights = weights / weights.sum()
-
-    stacked = np.stack(chunk_embeddings, axis=0)
-    final = np.average(stacked, axis=0, weights=weights)
-    return final.astype(np.float32)
+def _call_hf_embedding(url: str, texts: list, retries: int = 3) -> np.ndarray | None:
+    dim = EMBEDDING_DIM if "jobbert" in url else SBERT_DIM
+    payload = {"inputs": texts, "options": {"wait_for_model": True}}
+    for attempt in range(retries):
+        try:
+            resp = requests.post(url, headers=HF_HEADERS, json=payload, timeout=60)
+            if resp.status_code == 200:
+                result = resp.json()
+                if isinstance(result, list) and len(result) > 0:
+                    arr = np.array(result, dtype=np.float32)
+                    if arr.ndim == 2:
+                        return arr
+                    elif arr.ndim == 3:
+                        return arr.mean(axis=1).astype(np.float32)
+                return None
+            elif resp.status_code == 503:
+                wait = int(resp.json().get("estimated_time", 20))
+                logger.warning(f"HF model loading, waiting {wait}s...")
+                time.sleep(min(wait, 30))
+            elif resp.status_code == 429:
+                logger.warning(f"HF rate limit, waiting 10s (attempt {attempt+1})")
+                time.sleep(10)
+            else:
+                logger.warning(f"HF API error {resp.status_code}: {resp.text[:200]}")
+                return None
+        except Exception as e:
+            logger.warning(f"HF embedding call failed (attempt {attempt+1}): {e}")
+            time.sleep(5)
+    return None
 
 
 def embed_dataframe_jobbert(df: pd.DataFrame,
                              text_col: str = "description_clean",
-                             batch_size: int = 16) -> np.ndarray:
+                             batch_size: int = 8) -> np.ndarray:
     texts = df[text_col].fillna("").astype(str).tolist()
     n = len(texts)
-    embeddings = [np.zeros(EMBEDDING_DIM, dtype=np.float32)] * n
+    result = np.zeros((n, EMBEDDING_DIM), dtype=np.float32)
 
-    try:
-        tokenizer, model = _load_jobbert()
-        if tokenizer is None or model is None:
-            logger.warning("JobBERT unavailable, returning zero vectors.")
-            return np.stack(embeddings, axis=0)
+    for i, text in enumerate(texts):
+        chunks = _chunk_text(text)
+        chunk_embeddings = []
 
-        for i, text in enumerate(texts):
-            try:
-                embeddings[i] = _embed_text_jobbert_chunked(text, tokenizer, model)
-            except Exception as e:
-                logger.warning(f"JobBERT embed failed row {i}: {e}")
-            if (i + 1) % 50 == 0:
-                logger.info(f"JobBERT: {i + 1}/{n}")
-                gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-    except MemoryError as e:
-        logger.error(f"MemoryError in JobBERT embedding: {e}. Returning partial/zero vectors.")
+        for j in range(0, len(chunks), batch_size):
+            batch = chunks[j: j + batch_size]
+            arr = _call_hf_embedding(HF_API_URL_JOBBERT, batch)
+            if arr is not None and arr.shape[0] == len(batch):
+                chunk_embeddings.append(arr)
+            else:
+                logger.warning(f"JobBERT row {i} chunk {j} failed, using zero.")
+                chunk_embeddings.append(np.zeros((len(batch), EMBEDDING_DIM), dtype=np.float32))
+            time.sleep(0.3)
 
-    result = np.stack(embeddings, axis=0)
+        if chunk_embeddings:
+            all_chunks = np.concatenate(chunk_embeddings, axis=0)
+            weights = np.array([len(c) for c in chunks[:len(all_chunks)]], dtype=np.float32)
+            weights = weights / weights.sum()
+            result[i] = np.average(all_chunks, axis=0, weights=weights)
+
+        if (i + 1) % 10 == 0:
+            logger.info(f"JobBERT: {i+1}/{n}")
+
     logger.info(f"JobBERT embeddings done: shape={result.shape}")
     return result
 
 
 def embed_dataframe_sbert(df: pd.DataFrame,
                            text_col: str = "description_clean",
-                           batch_size: int = 32) -> np.ndarray:
+                           batch_size: int = 16) -> np.ndarray:
     texts = df[text_col].fillna("").astype(str).tolist()
     n = len(texts)
     result = np.zeros((n, SBERT_DIM), dtype=np.float32)
 
-    try:
-        sbert = _load_sbert()
-        if sbert is None:
-            logger.warning("SBERT unavailable, returning zero vectors.")
-            return result
-
-        for i in range(0, n, batch_size):
-            batch = texts[i: i + batch_size]
-            try:
-                vecs = sbert.encode(
-                    batch,
-                    batch_size=batch_size,
-                    show_progress_bar=False,
-                    normalize_embeddings=True,
-                    convert_to_numpy=True,
-                )
-                result[i: i + len(batch)] = vecs
-            except Exception as e:
-                logger.warning(f"SBERT batch {i} failed: {e}")
-            if (i // batch_size) % 10 == 0:
-                logger.info(f"SBERT: {min(i + batch_size, n)}/{n}")
-    except MemoryError as e:
-        logger.error(f"MemoryError in SBERT embedding: {e}. Returning partial/zero vectors.")
+    for i in range(0, n, batch_size):
+        batch = [t[:512] for t in texts[i: i + batch_size]]
+        arr = _call_hf_embedding(HF_API_URL_SBERT, batch)
+        if arr is not None and arr.shape[0] == len(batch):
+            result[i: i + len(batch)] = arr
+        else:
+            logger.warning(f"SBERT batch {i} failed or shape mismatch, using zero vectors.")
+        if (i // batch_size) % 5 == 0:
+            logger.info(f"SBERT: {min(i + batch_size, n)}/{n}")
+        time.sleep(0.5)
 
     logger.info(f"SBERT embeddings done: shape={result.shape}")
     return result
 
 
 def compute_and_save_embeddings(preprocessed_path: str) -> Path:
-    try:
-        torch.set_num_threads(2)
-        torch.set_num_interop_threads(2)
-    except Exception:
-        pass
+    if not HF_API_TOKEN:
+        logger.warning("HF_API_TOKEN tidak di-set. Embedding dilewati, menulis zero vectors.")
+        out_path = DATA_PROCESSED_DIR / (Path(preprocessed_path).stem + "_embeddings.npz")
+        np.savez_compressed(
+            out_path,
+            source_hashes=np.array([], dtype=str),
+            jobbert=np.zeros((0, EMBEDDING_DIM), dtype=np.float32),
+            sbert=np.zeros((0, SBERT_DIM), dtype=np.float32),
+        )
+        return out_path
 
     try:
         df = pd.read_parquet(preprocessed_path)
@@ -218,12 +148,12 @@ def compute_and_save_embeddings(preprocessed_path: str) -> Path:
             )
             return out_path
 
-        max_rows = 3000
+        max_rows = 500
         if len(df) > max_rows:
             logger.info(f"Large dataset: {len(df)} rows. Limiting to {max_rows}.")
             df = df.iloc[:max_rows].copy()
 
-        logger.info(f"Computing embeddings for {len(df)} rows from {preprocessed_path}")
+        logger.info(f"Computing embeddings for {len(df)} rows via HF API")
 
         if "description_clean" not in df.columns or df["description_clean"].isna().all():
             logger.warning("description_clean missing or all null, using empty strings.")
@@ -231,8 +161,6 @@ def compute_and_save_embeddings(preprocessed_path: str) -> Path:
 
         jobbert_embs = embed_dataframe_jobbert(df)
         gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
 
         sbert_embs = embed_dataframe_sbert(df)
         gc.collect()
@@ -245,17 +173,6 @@ def compute_and_save_embeddings(preprocessed_path: str) -> Path:
         )
         logger.info(f"Embeddings saved: {out_path} "
                     f"(jobbert={jobbert_embs.shape}, sbert={sbert_embs.shape})")
-        return out_path
-
-    except MemoryError as e:
-        logger.error(f"MemoryError in compute_and_save_embeddings: {e}. Writing zero arrays.")
-        out_path = DATA_PROCESSED_DIR / (Path(preprocessed_path).stem + "_embeddings.npz")
-        np.savez_compressed(
-            out_path,
-            source_hashes=np.array([], dtype=str),
-            jobbert=np.zeros((0, EMBEDDING_DIM), dtype=np.float32),
-            sbert=np.zeros((0, SBERT_DIM), dtype=np.float32),
-        )
         return out_path
 
     except Exception as e:

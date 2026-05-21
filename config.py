@@ -38,6 +38,8 @@ DB_URL = (
     f"@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']}"
 )
 
+HF_API_TOKEN = os.getenv("HF_API_TOKEN", "")
+
 JOBBERT_MODEL = "jjzha/jobbert-base-cased"
 SBERT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 NER_MODEL = "jjzha/jobbert_knowledge_extraction"
@@ -82,11 +84,10 @@ JOBSPY_GLOBAL_LOCATIONS = [
 
 JOBSPY_RESULTS_PER_SEARCH = 30
 JOBSPY_SITES = ["linkedin", "indeed", "glassdoor", "google", "zip_recruiter"]
-JOBSPY_HOURS_OLD = 72
 
 JOBBERT_MAX_TOKENS = 512
 JOBBERT_CHUNK_OVERLAP = 64
-EMBEDDING_DIM  = 768
+EMBEDDING_DIM = 768
 SBERT_DIM = 384
 
 FORECAST_HORIZON_WEEKS = 8
