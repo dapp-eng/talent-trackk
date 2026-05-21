@@ -66,25 +66,51 @@ def _run_pipeline(pipe, text: str, source_model: str) -> list:
         logger.warning(f"NER inference failed ({source_model}): {e}")
         return []
 
+    is_knowledge = "knowledge" in source_model.lower()
+    entity_type_label = "Knowledge" if is_knowledge else "Skill"
+
+    merged = []
+    current_tokens = []
+    current_score = []
+
+    for ent in entities:
+        raw_label = (ent.get("entity_group") or ent.get("entity") or "").upper()
+        raw_label = re.sub(r"^(B-|I-|B_|I_)", "", raw_label).strip()
+        word = ent.get("word", "").strip()
+        score = float(ent.get("score", 0.0))
+
+        if raw_label == "B" or (raw_label not in ("B", "I") and word):
+            if current_tokens:
+                merged.append((current_tokens, current_score))
+            current_tokens = [word]
+            current_score = [score]
+        elif raw_label == "I" and current_tokens:
+            current_tokens.append(word)
+            current_score.append(score)
+
+    if current_tokens:
+        merged.append((current_tokens, current_score))
+
     results = []
     seen = set()
-    for ent in entities:
-        label = (ent.get("entity_group") or ent.get("entity") or "").upper()
-        label = re.sub(r"^(B-|I-|B_|I_)", "", label).strip()
-        if not label or label == "O":
+    for tokens, scores in merged:
+        word = re.sub(r"\s*##", "", " ".join(tokens)).strip()
+        word = re.sub(r"\s+", " ", word)
+        word = _normalize_entity(word)
+        if not word or len(word) < 3:
             continue
-        word = _normalize_entity(ent.get("word", ""))
-        if not word or len(word) < 2:
+        if re.fullmatch(r"[\W\d]+", word):
             continue
-        key = (word.lower(), label)
+        avg_score = round(sum(scores) / len(scores), 4)
+        key = word.lower()
         if key in seen:
             continue
         seen.add(key)
         results.append({
             "entity_text": word,
-            "entity_type": label.title(),
+            "entity_type": entity_type_label,
             "source_model": source_model,
-            "extraction_confidence": round(float(ent.get("score", 0.0)), 4),
+            "extraction_confidence": avg_score,
         })
     return results
 
