@@ -2,7 +2,6 @@ import warnings
 import logging
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from datetime import datetime
 from sqlalchemy import text
 
@@ -64,30 +63,6 @@ def _croston(values: np.ndarray, horizon: int) -> dict:
     return {"predictions": preds, "lower": lower, "upper": upper, "model": "croston"}
 
 
-def _auto_arima(values: np.ndarray, horizon: int) -> dict:
-    try:
-        from pmdarima import auto_arima as pm_auto_arima
-        model = pm_auto_arima(
-            values,
-            start_p=0, max_p=3,
-            start_q=0, max_q=3,
-            d=None,
-            seasonal=False,
-            information_criterion="aic",
-            suppress_warnings=True,
-            error_action="ignore",
-            stepwise=True,
-        )
-        preds, conf_int = model.predict(n_periods=horizon, return_conf_int=True)
-        preds = np.maximum(preds, 0)
-        lower = np.maximum(conf_int[:, 0], 0)
-        upper = conf_int[:, 1]
-        return {"predictions": preds, "lower": lower, "upper": upper, "model": "auto_arima"}
-    except Exception as e:
-        logger.warning(f"auto_arima failed: {e}. Falling back to linear_trend.")
-        return _linear_trend(values, horizon)
-
-
 def _holt_winters(values: np.ndarray, horizon: int) -> dict:
     try:
         from statsmodels.tsa.holtwinters import ExponentialSmoothing
@@ -147,9 +122,7 @@ def _forecast_series(series: pd.Series, horizon: int) -> dict | None:
 
     if n < 8:
         return _linear_trend(values, horizon)
-    elif n < 16:
-        return _auto_arima(values, horizon)
-    elif n < 52:
+    elif n < 24:
         return _holt_winters(values, horizon)
     else:
         return _prophet(values, horizon)
@@ -283,9 +256,6 @@ def run_forecasting(engine=None, horizon: int = None):
     conn = get_connection()
     try:
         cur = conn.cursor()
-        cur.execute(
-            "DELETE FROM forecast_skill_demand WHERE generated_at < NOW() - INTERVAL '7 days';"
-        )
         psycopg2.extras.execute_values(
             cur,
             """
@@ -294,13 +264,27 @@ def run_forecasting(engine=None, horizon: int = None):
                  forecast_year, forecast_week, predicted_count, lower_bound,
                  upper_bound, model_name)
             VALUES %s
-            ON CONFLICT DO NOTHING;
+            ON CONFLICT (skill_id, job_category, global_region, forecast_week_label)
+            DO UPDATE SET
+                predicted_count = EXCLUDED.predicted_count,
+                lower_bound = EXCLUDED.lower_bound,
+                upper_bound = EXCLUDED.upper_bound,
+                model_name = EXCLUDED.model_name,
+                generated_at = NOW();
             """,
             rows,
             page_size=500,
         )
         conn.commit()
-        logger.info(f"Forecast: {len(rows)} rows inserted.")
+        cur2 = conn.cursor()
+        cur2.execute("""
+            DELETE FROM forecast_skill_demand
+            WHERE generated_at < (
+                SELECT MAX(generated_at) FROM forecast_skill_demand
+            );
+        """)
+        conn.commit()
+        logger.info(f"Forecast: {len(rows)} rows inserted/updated, old generations cleaned.")
     except Exception:
         conn.rollback()
         raise
