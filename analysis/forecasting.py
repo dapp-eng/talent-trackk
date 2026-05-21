@@ -176,7 +176,9 @@ def run_forecasting(engine=None, horizon: int = None):
         )).scalar()
 
     if last_forecast and last_data:
-        if pd.Timestamp(last_forecast) >= pd.Timestamp(last_data):
+        lf = pd.Timestamp(last_forecast).tz_localize(None) if pd.Timestamp(last_forecast).tzinfo else pd.Timestamp(last_forecast)
+        ld = pd.Timestamp(last_data)
+        if lf >= ld:
             logger.info("Tidak ada data baru sejak forecast terakhir, skip forecasting.")
             return
 
