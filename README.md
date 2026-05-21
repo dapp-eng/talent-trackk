@@ -17,7 +17,7 @@ talent-trackk/
 │   └── extract_periodic.py     # JobSpy web scraping
 ├── transform/                  # Data transformation
 │   ├── preprocess.py           # Cleaning & normalization
-│   ├── embed.py                # JobBERT + SBERT embeddings
+│   ├── embed.py                # JobBERT / SBERT embeddings
 │   ├── ner_skills.py           # Skill extraction
 │   └── dedup.py                # Deduplication
 ├── load/                       # Database loading
@@ -29,16 +29,15 @@ talent-trackk/
 ├── atoti_app/                  # BI interface
 │   └── datamart.ipynb          # Analytics notebook
 └── data/
-    ├── raw/                    # Raw data storage
-    └── processed/              # Processed outputs
+    └── raw/                    # Raw data storage
 ```
 
 ## Pipeline Features
 
-- **Extraction**: Kaggle dataset + JobSpy real-time scraping (10 terms, 10 locations per run)
+- **Extraction**: Kaggle dataset + JobSpy real-time scraping
 - **Transformation**: Text cleaning, date parsing, salary normalization, location mapping
-- **Embeddings**: JobBERT chunked encoding (510 token window) + SBERT sentence embeddings
+- **Embeddings**: JobBERT chunked encoding + SBERT sentence embeddings
 - **Deduplication**: MD5 hash + cosine similarity filtering
 - **Loading**: Batch insert with conflict handling (source_hash, date)
-- **Analysis**: Holt-Winters forecasting, CUBE aggregations
+- **Analysis**: Forecasting, CUBE aggregations
 - **BI**: Atoti dashboards
