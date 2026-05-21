@@ -74,15 +74,15 @@ def _scrape_one(scrape_jobs, term: str, location: str, log: dict) -> pd.DataFram
             country_indeed="USA" if "United States" in location else "worldwide",
         )
         if df is None or len(df) == 0:
-            logger.info(f"  → {term!r} @ {location!r}: 0 hasil")
+            logger.info(f"  {term!r} @ {location!r}: 0 result")
             return pd.DataFrame()
         df = _align_columns(df, term, location)
-        logger.info(f"  → {term!r} @ {location!r}: {len(df)} hasil raw")
+        logger.info(f"  {term!r} @ {location!r}: {len(df)} raw results")
         log["runs"].append({"term": term, "location": location, "rows": len(df)})
         return df
     except Exception as e:
         err_msg = str(e)
-        logger.warning(f"  JobSpy failed: term={term!r} location={location!r} → {err_msg}")
+        logger.warning(f"JobSpy failed: term={term!r} location={location!r} → {err_msg}")
         log["errors"].append({"term": term, "location": location, "error": err_msg})
         return pd.DataFrame()
     
