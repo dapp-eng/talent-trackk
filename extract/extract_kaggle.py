@@ -179,9 +179,9 @@ def extract_kaggle(path: str = None) -> Path:
 
         if not output_chunks:
             logger.warning("Kaggle extraction: no new rows (all already in DB or empty source).")
-            df = pd.DataFrame(columns=EMPTY_COLS)
-        else:
-            df = pd.concat(output_chunks, ignore_index=True)
+            return None
+
+        df = pd.concat(output_chunks, ignore_index=True)
 
         keep_cols = [c for c in EMPTY_COLS if c in df.columns]
         extra_cols = [c for c in df.columns if c not in EMPTY_COLS]

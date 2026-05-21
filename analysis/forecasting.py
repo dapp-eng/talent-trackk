@@ -163,9 +163,22 @@ def _get_future_week_labels(last_year: int, last_week: int, horizon: int) -> lis
 
 def run_forecasting(engine=None, horizon: int = None):
     if engine is None:
-        engine  = get_engine()
+        engine = get_engine()
     if horizon is None:
         horizon = FORECAST_HORIZON_WEEKS
+
+    with engine.connect() as conn:
+        last_forecast = conn.execute(text(
+            "SELECT MAX(generated_at) FROM forecast_skill_demand;"
+        )).scalar()
+        last_data = conn.execute(text(
+            "SELECT MAX(dt.date) FROM fact_job_posting f JOIN dim_time dt ON f.time_id = dt.time_id;"
+        )).scalar()
+
+    if last_forecast and last_data:
+        if pd.Timestamp(last_forecast) >= pd.Timestamp(last_data):
+            logger.info("Tidak ada data baru sejak forecast terakhir, skip forecasting.")
+            return
 
     logger.info("Loading weekly skill demand data...")
     df = _get_weekly_skill_data(engine)
