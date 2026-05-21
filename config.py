@@ -82,8 +82,8 @@ JOBSPY_GLOBAL_LOCATIONS = [
     "Remote", "Worldwide",
 ]
 
-JOBSPY_RESULTS_PER_SEARCH = 30
-JOBSPY_SITES = ["linkedin", "indeed", "glassdoor", "google", "zip_recruiter"]
+JOBSPY_RESULTS_PER_SEARCH = 10
+JOBSPY_SITES = ["linkedin"]
 
 JOBBERT_MAX_TOKENS = 512
 JOBBERT_CHUNK_OVERLAP = 64

@@ -64,25 +64,28 @@ def _align_columns(df: pd.DataFrame, search_term: str, location: str) -> pd.Data
 
 
 def _scrape_one(scrape_jobs, term: str, location: str, log: dict) -> pd.DataFrame:
+    logger.info(f"Scraping: {term!r} @ {location!r} ...")
     try:
         df = scrape_jobs(
             site_name=JOBSPY_SITES,
             search_term=term,
             location=location,
             results_wanted=JOBSPY_RESULTS_PER_SEARCH,
-            verbose=0,
+            country_indeed="USA" if "United States" in location else "worldwide",
         )
         if df is None or len(df) == 0:
+            logger.info(f"  → {term!r} @ {location!r}: 0 hasil")
             return pd.DataFrame()
         df = _align_columns(df, term, location)
+        logger.info(f"  → {term!r} @ {location!r}: {len(df)} hasil raw")
         log["runs"].append({"term": term, "location": location, "rows": len(df)})
         return df
     except Exception as e:
         err_msg = str(e)
-        logger.warning(f"JobSpy failed: term={term!r} location={location!r} → {err_msg}")
+        logger.warning(f"  JobSpy failed: term={term!r} location={location!r} → {err_msg}")
         log["errors"].append({"term": term, "location": location, "error": err_msg})
         return pd.DataFrame()
-
+    
 
 def _write_empty(out_path: Path, ts: str, log: dict) -> Path:
     PERIODIC_RAW_PATH.mkdir(parents=True, exist_ok=True)
@@ -188,7 +191,7 @@ def scrape_periodic(execution_date: str = None) -> Path:
                     if total_unique >= PERIODIC_ROW_LIMIT:
                         reached_cap = True
 
-            time.sleep(random.uniform(1.5, 3.0))
+            time.sleep(random.uniform(5.0, 10.0))
 
     if not all_frames:
         logger.warning("Periodic scrape: no new data collected.")
