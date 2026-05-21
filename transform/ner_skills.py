@@ -70,6 +70,7 @@ def _run_pipeline(pipe, text: str, source_model: str) -> list:
     seen = set()
     for ent in entities:
         label = (ent.get("entity_group") or ent.get("entity") or "").upper()
+        label = re.sub(r"^(B-|I-|B_|I_)", "", label).strip()
         if not label or label == "O":
             continue
         word = _normalize_entity(ent.get("word", ""))
@@ -86,7 +87,6 @@ def _run_pipeline(pipe, text: str, source_model: str) -> list:
             "extraction_confidence": round(float(ent.get("score", 0.0)), 4),
         })
     return results
-
 
 def extract_entities_from_text(text: str) -> list:
     results = []
