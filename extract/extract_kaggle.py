@@ -99,7 +99,7 @@ def _load_existing_hashes() -> set:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("SELECT DISTINCT source_hash FROM fact_job_posting;")
             hashes = {r["source_hash"] for r in cur.fetchall()}
-            logger.info(f"Loaded {len(hashes)} existing hashes from DB.")
+            logger.warning(f"Loaded {len(hashes)} existing hashes from DB.")
             return hashes
         finally:
             conn.close()
@@ -123,7 +123,7 @@ def extract_kaggle(path: str = None) -> Path:
             found = next((p for p in candidates if p.exists()), None)
             if found:
                 src = found
-                logger.info(f"Using dataset file: {src}")
+                logger.warning(f"Using dataset file: {src}")
             else:
                 raise FileNotFoundError(
                     f"Kaggle LinkedIn dataset not found. Looked for: {src} and "
@@ -172,7 +172,7 @@ def extract_kaggle(path: str = None) -> Path:
             output_chunks.append(new_rows)
 
             collected = sum(len(c) for c in output_chunks)
-            logger.info(f"Kaggle chunk {i + 1}: +{len(new_rows)} rows (total: {collected})")
+            logger.warning(f"Kaggle chunk {i + 1}: +{len(new_rows)} rows (total: {collected})")
 
             if collected >= KAGGLE_BATCH_LIMIT:
                 break
@@ -188,7 +188,7 @@ def extract_kaggle(path: str = None) -> Path:
         df = df[keep_cols + extra_cols]
 
         df.to_parquet(out_path, index=False, engine="pyarrow")
-        logger.info(f"Kaggle extraction done: {len(df)} new rows → {out_path}")
+        logger.warning(f"Kaggle extraction done: {len(df)} new rows → {out_path}")
 
         meta = {
             "source": "kaggle_linkedin",

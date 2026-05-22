@@ -118,7 +118,7 @@ def load_fact_job_posting(
             page_size=500,
         )
         conn.commit()
-        logger.info(f"load_fact: inserted up to {len(rows)} rows")
+        logger.warning(f"load_fact: inserted up to {len(rows)} rows")
     except Exception:
         conn.rollback()
         raise
@@ -137,7 +137,7 @@ def load_fact_job_posting(
     finally:
         conn2.close()
 
-    logger.info(f"load_fact: {len(job_id_map)} job_id mappings retrieved")
+    logger.warning(f"load_fact: {len(job_id_map)} job_id mappings retrieved")
     return job_id_map
 
 
@@ -176,7 +176,7 @@ def load_bridge_job_skill(
             page_size=1000,
         )
         conn.commit()
-        logger.info(f"load_bridge_job_skill: {len(rows)} rows inserted")
+        logger.warning(f"load_bridge_job_skill: {len(rows)} rows inserted")
     except Exception:
         conn.rollback()
         raise
@@ -216,7 +216,7 @@ def load_bridge_job_entity(
             page_size=1000,
         )
         conn.commit()
-        logger.info(f"load_bridge_job_entity: {len(rows)} rows inserted")
+        logger.warning(f"load_bridge_job_entity: {len(rows)} rows inserted")
     except Exception:
         conn.rollback()
         raise
@@ -263,7 +263,7 @@ def load_embeddings(
             page_size=200,
         )
         conn.commit()
-        logger.info(f"load_embeddings: {len(rows)} rows inserted/updated")
+        logger.warning(f"load_embeddings: {len(rows)} rows inserted/updated")
     except Exception:
         conn.rollback()
         raise

@@ -76,7 +76,7 @@ def _run_gliner(model, texts: list, src_hashes: list) -> list:
                         "entity_text": word,
                         "entity_type": entity_type,
                         "source_model": GLINER_MODEL,
-                        "extraction_confidence": score,
+                        "extraction_confidence":  score,
                     })
             except Exception as e:
                 logger.warning(f"GliNER inference failed row {i}: {e}")
@@ -131,6 +131,11 @@ def extract_entities_dataframe(
 def run_ner(preprocessed_path: str) -> Path:
     df = pd.read_parquet(preprocessed_path)
     logger.warning(f"Running NER on {len(df)} rows via GliNER")
+
+    if LANG_DETECT_AVAILABLE := ("description_lang" in df.columns):
+        lang_counts = df["description_lang"].value_counts().to_dict()
+        logger.warning(f"  Input language distribution: {lang_counts}")
+
     entities_df = extract_entities_dataframe(df)
     out_path = DATA_PROCESSED_DIR / (Path(preprocessed_path).stem + "_entities.parquet")
     entities_df.to_parquet(out_path, index=False, engine="pyarrow")

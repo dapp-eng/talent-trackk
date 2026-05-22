@@ -31,7 +31,7 @@ def upsert_dim_time(dates: pd.Series) -> dict:
         mapping = {str(r["date"]): r["time_id"] for r in cur.fetchall()}
     finally:
         conn.close()
-    logger.info(f"dim_time: {len(mapping)} dates total")
+    logger.warning(f"dim_time: {len(mapping)} dates total")
     return mapping
 
 
@@ -67,7 +67,7 @@ def upsert_dim_location(df: pd.DataFrame) -> dict:
             mapping[key] = r["location_id"]
     finally:
         conn.close()
-    logger.info(f"dim_location: {len(mapping)} locations total")
+    logger.warning(f"dim_location: {len(mapping)} locations total")
     return mapping
 
 
@@ -88,7 +88,7 @@ def upsert_dim_company(df: pd.DataFrame) -> dict:
         mapping = {r["company_name"]: r["company_id"] for r in cur.fetchall()}
     finally:
         conn.close()
-    logger.info(f"dim_company: {len(mapping)} companies total")
+    logger.warning(f"dim_company: {len(mapping)} companies total")
     return mapping
 
 
@@ -118,7 +118,7 @@ def upsert_dim_position(df: pd.DataFrame) -> dict:
         }
     finally:
         conn.close()
-    logger.info(f"dim_position: {len(mapping)} positions total")
+    logger.warning(f"dim_position: {len(mapping)} positions total")
     return mapping
 
 
@@ -137,7 +137,7 @@ def upsert_dim_platform(platforms: list) -> dict:
         mapping = {r["platform_name"]: r["platform_id"] for r in cur.fetchall()}
     finally:
         conn.close()
-    logger.info(f"dim_platform: {len(mapping)} platforms total")
+    logger.warning(f"dim_platform: {len(mapping)} platforms total")
     return mapping
 
 
@@ -168,7 +168,7 @@ def upsert_dim_skill(entities_df: pd.DataFrame) -> dict:
         mapping = {r["skill_name"]: r["skill_id"] for r in cur.fetchall()}
     finally:
         conn.close()
-    logger.info(f"dim_skill: {len(mapping)} skills total")
+    logger.warning(f"dim_skill: {len(mapping)} skills total")
     return mapping
 
 
@@ -198,5 +198,5 @@ def upsert_dim_entity(entities_df: pd.DataFrame) -> dict:
         }
     finally:
         conn.close()
-    logger.info(f"dim_entity: {len(mapping)} entities total")
+    logger.warning(f"dim_entity: {len(mapping)} entities total")
     return mapping
