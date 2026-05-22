@@ -8,7 +8,6 @@ from datetime import datetime
 from pathlib import Path
 
 from config import (
-    JOBSPY_SEARCH_TERMS,
     JOBSPY_GLOBAL_LOCATIONS,
     JOBSPY_RESULTS_PER_SEARCH,
     JOBSPY_SITES,
@@ -19,8 +18,7 @@ from config import (
 logger = logging.getLogger(__name__)
 
 PERIODIC_ROW_LIMIT = 100
-_MAX_TERMS = 5
-_MAX_LOCATIONS = 4
+_MAX_LOCATIONS = 10
 
 COLUMN_RENAME = {
     "job_title": "title", "position": "title",
@@ -38,22 +36,21 @@ COLUMN_RENAME = {
 REQUIRED_COLUMNS = [
     "title", "company", "location", "description", "date_posted",
     "salary_min", "salary_max", "is_remote", "platform", "employment_type",
-    "search_term", "search_location", "extraction_ts", "data_source",
+    "search_location", "extraction_ts", "data_source",
 ]
 
 
 def _make_hash(row: pd.Series) -> str:
     company = str(row.get("company") or "").strip().lower()
-    title = str(row.get("title")   or "").strip().lower()
+    title = str(row.get("title") or "").strip().lower()
     date = str(row.get("date_posted") or "").strip()
     return hashlib.md5(f"{company}|{title}|{date}".encode("utf-8")).hexdigest()
 
 
-def _align_columns(df: pd.DataFrame, search_term: str, location: str) -> pd.DataFrame:
+def _align_columns(df: pd.DataFrame, location: str) -> pd.DataFrame:
     df = df.copy()
     df.columns = [c.lower().strip().replace(" ", "_") for c in df.columns]
     df = df.rename(columns={k: v for k, v in COLUMN_RENAME.items() if k in df.columns})
-    df["search_term"] = search_term
     df["search_location"] = location
     df["extraction_ts"] = datetime.utcnow().isoformat()
     df["data_source"] = "jobspy_periodic"
@@ -63,29 +60,28 @@ def _align_columns(df: pd.DataFrame, search_term: str, location: str) -> pd.Data
     return df[REQUIRED_COLUMNS + [c for c in df.columns if c not in REQUIRED_COLUMNS]]
 
 
-def _scrape_one(scrape_jobs, term: str, location: str, log: dict) -> pd.DataFrame:
-    print(f"Scraping: {term!r} @ {location!r} ...")
+def _scrape_one(scrape_jobs, location: str, log: dict) -> pd.DataFrame:
+    logger.warning(f"→ Scraping: @ {location!r} ...")
     try:
         df = scrape_jobs(
             site_name=JOBSPY_SITES,
-            search_term=term,
+            search_term="",
             location=location,
             results_wanted=JOBSPY_RESULTS_PER_SEARCH,
-            country_indeed="USA" if "United States" in location else "worldwide",
         )
         if df is None or len(df) == 0:
-            logger.info(f"  {term!r} @ {location!r}: 0 result")
+            logger.warning(f"  → @ {location!r}: 0 hasil")
             return pd.DataFrame()
-        df = _align_columns(df, term, location)
-        print(f"  {term!r} @ {location!r}: {len(df)} raw results")
-        log["runs"].append({"term": term, "location": location, "rows": len(df)})
+        df = _align_columns(df, location)
+        logger.warning(f"  → @ {location!r}: {len(df)} hasil raw")
+        log["runs"].append({"location": location, "rows": len(df)})
         return df
     except Exception as e:
         err_msg = str(e)
-        logger.warning(f"JobSpy failed: term={term!r} location={location!r} → {err_msg}")
-        log["errors"].append({"term": term, "location": location, "error": err_msg})
+        logger.warning(f"  ✗ JobSpy failed: location={location!r} → {err_msg}")
+        log["errors"].append({"location": location, "error": err_msg})
         return pd.DataFrame()
-    
+
 
 def _write_empty(out_path: Path, ts: str, log: dict) -> Path:
     PERIODIC_RAW_PATH.mkdir(parents=True, exist_ok=True)
@@ -104,13 +100,12 @@ def _load_existing_hashes() -> set:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("SELECT DISTINCT source_hash FROM fact_job_posting;")
             hashes = {r["source_hash"] for r in cur.fetchall()}
-            logger.info(f"Periodic: loaded {len(hashes)} existing hashes from DB.")
+            logger.warning(f"Periodic: loaded {len(hashes)} existing hashes from DB.")
             return hashes
         finally:
             conn.close()
     except Exception as e:
-        logger.warning(f"Could not load existing hashes from DB (periodic): {e}. "
-                       "Proceeding without cross-run dedup.")
+        logger.warning(f"Could not load existing hashes from DB (periodic): {e}.")
         return set()
 
 
@@ -124,7 +119,6 @@ def scrape_periodic(execution_date: str = None) -> Path:
         "ts": ts, "runs": [], "total": 0,
         "errors": [], "skipped": 0,
         "row_limit": PERIODIC_ROW_LIMIT,
-        "max_terms": _MAX_TERMS,
         "max_locations": _MAX_LOCATIONS,
     }
 
@@ -138,13 +132,10 @@ def scrape_periodic(execution_date: str = None) -> Path:
         return _write_empty(out_path, ts, log)
 
     existing_db_hashes: set = _load_existing_hashes()
-
-    terms = JOBSPY_SEARCH_TERMS[:_MAX_TERMS]
     locations = JOBSPY_GLOBAL_LOCATIONS[:_MAX_LOCATIONS]
 
-    logger.info(
-        f"Periodic scrape: {len(terms)} terms × {len(locations)} locations, "
-        f"cap={PERIODIC_ROW_LIMIT} rows"
+    logger.warning(
+        f"Periodic scrape: {len(locations)} locations, cap={PERIODIC_ROW_LIMIT} rows"
     )
 
     seen_hashes: set = set(existing_db_hashes)
@@ -152,46 +143,43 @@ def scrape_periodic(execution_date: str = None) -> Path:
     total_unique = 0
     reached_cap = False
 
-    for term in terms:
+    for location in locations:
         if reached_cap:
             break
-        for location in locations:
-            if reached_cap:
-                break
 
-            chunk = _scrape_one(scrape_jobs, term, location, log)
+        chunk = _scrape_one(scrape_jobs, location, log)
+
+        if not chunk.empty:
+            chunk["title"] = chunk["title"].astype(str).str.strip()
+            chunk["company"] = chunk["company"].fillna("Unknown").astype(str).str.strip()
+            chunk["description"] = chunk["description"].fillna("").astype(str)
+            chunk["location"] = chunk["location"].fillna("Unknown").astype(str).str.strip()
+            chunk = chunk[chunk["title"].str.len() > 0]
+            chunk = chunk[chunk["description"].str.len() >= 20]
 
             if not chunk.empty:
-                chunk["title"] = chunk["title"].astype(str).str.strip()
-                chunk["company"] = chunk["company"].fillna("Unknown").astype(str).str.strip()
-                chunk["description"] = chunk["description"].fillna("").astype(str)
-                chunk["location"] = chunk["location"].fillna("Unknown").astype(str).str.strip()
-                chunk = chunk[chunk["title"].str.len() > 0]
-                chunk = chunk[chunk["description"].str.len() >= 20]
+                chunk["source_hash"] = chunk.apply(_make_hash, axis=1)
+                new_rows = chunk[~chunk["source_hash"].isin(seen_hashes)].copy()
 
-                if not chunk.empty:
-                    chunk["source_hash"] = chunk.apply(_make_hash, axis=1)
-                    new_rows = chunk[~chunk["source_hash"].isin(seen_hashes)].copy()
+                remaining = PERIODIC_ROW_LIMIT - total_unique
+                if remaining <= 0:
+                    reached_cap = True
+                    break
 
-                    remaining = PERIODIC_ROW_LIMIT - total_unique
-                    if remaining <= 0:
-                        reached_cap = True
-                        break
+                new_rows = new_rows.head(remaining)
+                if not new_rows.empty:
+                    seen_hashes.update(new_rows["source_hash"].values)
+                    all_frames.append(new_rows)
+                    total_unique += len(new_rows)
+                    logger.warning(
+                        f"  ✓ @ {location!r}: +{len(new_rows)} baris "
+                        f"(total: {total_unique}/{PERIODIC_ROW_LIMIT})"
+                    )
 
-                    new_rows = new_rows.head(remaining)
-                    if not new_rows.empty:
-                        seen_hashes.update(new_rows["source_hash"].values)
-                        all_frames.append(new_rows)
-                        total_unique += len(new_rows)
-                        print(
-                            f"  {term!r} / {location!r}: +{len(new_rows)} "
-                            f"(total: {total_unique}/{PERIODIC_ROW_LIMIT})"
-                        )
+                if total_unique >= PERIODIC_ROW_LIMIT:
+                    reached_cap = True
 
-                    if total_unique >= PERIODIC_ROW_LIMIT:
-                        reached_cap = True
-
-            time.sleep(random.uniform(5.0, 10.0))
+        time.sleep(random.uniform(8.0, 15.0))
 
     if not all_frames:
         logger.warning("Periodic scrape: no new data collected.")
@@ -213,7 +201,7 @@ def scrape_periodic(execution_date: str = None) -> Path:
     log["total"] = len(df_all)
     (PERIODIC_RAW_PATH / f"periodic_{ts}_log.json").write_text(json.dumps(log, indent=2))
 
-    logger.info(
+    logger.warning(
         f"Periodic extraction done: {len(df_all)} unique rows "
         f"({log['skipped']} duplicates removed) → {out_path}"
     )
