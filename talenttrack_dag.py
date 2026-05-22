@@ -67,7 +67,7 @@ def task_seed_dim_time():
             """, (d, int(iso[1]), d.month, (d.month - 1) // 3 + 1, d.year))
             d += timedelta(days=1)
         conn.commit()
-        logger.warning(f"dim_time seeded from {start} to {end}")
+        print(f"dim_time seeded from {start} to {end}")
     finally:
         conn.close()
 
@@ -148,7 +148,7 @@ def task_preprocess_kaggle(kaggle_raw_path):
     _logger = logging.getLogger(__name__)
     from transform.preprocess import preprocess_file
     if not kaggle_raw_path:
-        _logger.warning("There's no new data from Kaggle, skip preprocess.")
+        _print("There's no new data from Kaggle, skip preprocess.")
         return None
     if not Path(kaggle_raw_path).exists():
         fallback = os.path.join(root, "data", "raw", "kaggle_staged.parquet")
@@ -414,12 +414,12 @@ def task_refresh_views():
         for v in views:
             try:
                 cur.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {v};")
-                logger.warning(f"Refreshed: {v}")
+                print(f"Refreshed: {v}")
             except psycopg2.errors.ObjectNotInPrerequisiteState:
                 cur.execute(f"REFRESH MATERIALIZED VIEW {v};")
-                logger.warning(f"Refreshed (non-concurrent): {v}")
+                print(f"Refreshed (non-concurrent): {v}")
             except Exception as e:
-                logger.warning(f"Warning: skipping {v}: {e}")
+                print(f"Warning: skipping {v}: {e}")
     finally:
         conn.close()
 
