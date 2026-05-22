@@ -70,10 +70,10 @@ def _scrape_one(scrape_jobs, location: str, log: dict) -> pd.DataFrame:
             results_wanted=JOBSPY_RESULTS_PER_SEARCH,
         )
         if df is None or len(df) == 0:
-            logger.warning(f"  → @ {location!r}: 0 hasil")
+            logger.warning(f"  Scraped@ {location!r}: 0 result")
             return pd.DataFrame()
         df = _align_columns(df, location)
-        logger.warning(f"  → @ {location!r}: {len(df)} hasil raw")
+        logger.warning(f"  Scraped @ {location!r}: {len(df)} raw result")
         log["runs"].append({"location": location, "rows": len(df)})
         return df
     except Exception as e:
@@ -172,7 +172,7 @@ def scrape_periodic(execution_date: str = None) -> Path:
                     all_frames.append(new_rows)
                     total_unique += len(new_rows)
                     logger.warning(
-                        f"  DONE @ {location!r}: +{len(new_rows)} baris "
+                        f"  @ {location!r}: +{len(new_rows)} baris "
                         f"(total: {total_unique}/{PERIODIC_ROW_LIMIT})"
                     )
 
