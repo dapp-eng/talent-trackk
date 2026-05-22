@@ -23,6 +23,18 @@ def _content_hash(row: pd.Series) -> str:
     return hashlib.md5(content.encode("utf-8")).hexdigest()
 
 
+def _strict_dedup_key(row: pd.Series) -> str:
+    title = _clean_text(str(row.get("title_clean") or row.get("title") or ""))
+    company = _clean_text(str(row.get("company_clean") or row.get("company") or ""))
+    location = _clean_text(str(row.get("location") or row.get("loc_city") or ""))
+    date = str(row.get("date_parsed") or row.get("date_posted") or "").strip()
+
+    if not any([title, company, location, date]):
+        return str(row.get("source_hash", hashlib.md5(str(row.values).encode()).hexdigest()))
+
+    return hashlib.md5(f"{title}|{company}|{location}|{date}".encode("utf-8")).hexdigest()
+
+
 def dedup_against_existing_hashes(df: pd.DataFrame, existing_hashes: set) -> pd.DataFrame:
     before = len(df)
     df = df[~df["source_hash"].isin(existing_hashes)]
@@ -34,9 +46,9 @@ def dedup_against_existing_hashes(df: pd.DataFrame, existing_hashes: set) -> pd.
 def dedup_within_batch(df: pd.DataFrame) -> pd.DataFrame:
     before = len(df)
     df = df.copy()
-    df["_content_hash"] = df.apply(_content_hash, axis=1)
-    df = df.drop_duplicates(subset=["_content_hash"])
-    df = df.drop(columns=["_content_hash"])
+    df["_strict_key"] = df.apply(_strict_dedup_key, axis=1)
+    df = df.drop_duplicates(subset=["_strict_key"])
+    df = df.drop(columns=["_strict_key"])
     after = len(df)
     print(f"Dedup within batch: removed {before - after}, kept {after}")
     return df

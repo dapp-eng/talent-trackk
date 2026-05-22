@@ -21,6 +21,10 @@ def _is_sparse(values: np.ndarray, threshold: float = 0.60) -> bool:
 
 def _exp_smoothing(values: np.ndarray, horizon: int) -> dict:
     try:
+        if len(values) < 2:
+            avg = float(np.mean(values))
+            preds = np.full(horizon, max(avg, 0))
+            return {"predictions": preds, "lower": preds.copy(), "upper": preds.copy(), "model": "mean"}
         from statsmodels.tsa.holtwinters import SimpleExpSmoothing
         fit = SimpleExpSmoothing(values).fit(optimized=True)
         preds = np.maximum(fit.forecast(horizon), 0)
@@ -51,15 +55,13 @@ def _croston(values: np.ndarray, horizon: int) -> dict:
         prev_idx = non_zero_idx[i - 1]
         interval = float(idx - prev_idx)
         demand = float(values[idx])
-        z = alpha * demand   + (1 - alpha) * z
+        z = alpha * demand + (1 - alpha) * z
         p = alpha * interval + (1 - alpha) * p
     forecast_val = max(z / p if p > 0 else 0.0, 0.0)
     nz_vals = values[non_zero_idx]
-    std  = float(np.std(nz_vals)) if len(nz_vals) > 1 else 0.0
+    std = float(np.std(nz_vals)) if len(nz_vals) > 1 else 0.0
     preds = np.full(horizon, forecast_val)
-    lower = np.maximum(preds - 1.96 * std, 0)
-    upper = preds + 1.96 * std
-    return {"predictions": preds, "lower": lower, "upper": upper, "model": "croston"}
+    return {"predictions": preds, "lower": np.maximum(preds - 1.96*std, 0), "upper": preds + 1.96*std, "model": "croston"}
 
 
 def _holt_winters(values: np.ndarray, horizon: int) -> dict:
@@ -86,7 +88,7 @@ def _prophet(values: np.ndarray, horizon: int) -> dict:
         n = len(values)
         df_p = pd.DataFrame({
             "ds": pd.date_range(start="2024-01-01", periods=n, freq="W"),
-            "y":  values,
+            "y": values,
         })
         m = Prophet(
             weekly_seasonality=False,
@@ -112,13 +114,10 @@ def _prophet(values: np.ndarray, horizon: int) -> dict:
 def _forecast_series(series: pd.Series, horizon: int) -> dict | None:
     values = series.values.astype(float)
     n = len(values)
-
     if n < FORECAST_MIN_HISTORY_WEEKS:
         return None
-
     if _is_sparse(values):
         return _croston(values, horizon)
-
     if n < 8:
         return _exp_smoothing(values, horizon)
     elif n < 24:
@@ -130,13 +129,9 @@ def _forecast_series(series: pd.Series, horizon: int) -> dict | None:
 def _get_weekly_skill_data(engine) -> pd.DataFrame:
     query = text("""
         SELECT
-            week_label,
-            year,
-            week,
-            skill_name,
-            skill_domain,
-            job_category,
-            global_region,
+            week_label, year, week,
+            skill_name, skill_domain,
+            job_category, global_region,
             posting_count
         FROM mv_weekly_skill_demand
         ORDER BY year, week;
@@ -154,7 +149,7 @@ def _get_future_week_labels(last_year: int, last_week: int, horizon: int) -> lis
     for _ in range(horizon):
         wk += 1
         if wk > 52:
-            wk  = 1
+            wk = 1
             yr += 1
         labels.append((yr, wk, f"{yr}-W{wk:02d}"))
     return labels
@@ -166,21 +161,6 @@ def run_forecasting(engine=None, horizon: int = None):
     if horizon is None:
         horizon = FORECAST_HORIZON_WEEKS
 
-    with engine.connect() as conn:
-        last_forecast = conn.execute(text(
-            "SELECT MAX(generated_at) FROM forecast_skill_demand;"
-        )).scalar()
-        last_data = conn.execute(text(
-            "SELECT MAX(dt.date) FROM fact_job_posting f JOIN dim_time dt ON f.time_id = dt.time_id;"
-        )).scalar()
-
-    if last_forecast and last_data:
-        lf = pd.Timestamp(last_forecast).tz_localize(None) if pd.Timestamp(last_forecast).tzinfo else pd.Timestamp(last_forecast)
-        ld = pd.Timestamp(last_data)
-        if lf >= ld:
-            logger.warning("Tidak ada data baru sejak forecast terakhir, skip forecasting.")
-            return
-
     logger.warning("Loading weekly skill demand data...")
     df = _get_weekly_skill_data(engine)
     if df.empty:
@@ -190,10 +170,7 @@ def run_forecasting(engine=None, horizon: int = None):
     group_cols = ["skill_name", "job_category", "global_region"]
     groups = df.groupby(group_cols)
     total = len(groups)
-    logger.warning(
-        f"Forecasting {total} combinations, horizon={horizon} weeks, "
-        f"min_history={FORECAST_MIN_HISTORY_WEEKS} week(s)"
-    )
+    logger.warning(f"Forecasting {total} combinations, horizon={horizon} weeks, min_history={FORECAST_MIN_HISTORY_WEEKS} week(s)")
 
     results = []
     skipped = 0
@@ -201,15 +178,12 @@ def run_forecasting(engine=None, horizon: int = None):
     for i, (key, grp) in enumerate(groups):
         grp_sorted = grp.sort_values(["year", "week"]).reset_index(drop=True)
         series = grp_sorted["posting_count"].astype(float)
-
         result = _forecast_series(series, horizon)
         if result is None:
             skipped += 1
             continue
-
         last_year = int(grp_sorted.iloc[-1]["year"])
         last_week = int(grp_sorted.iloc[-1]["week"])
-
         future_labels = _get_future_week_labels(last_year, last_week, horizon)
         for j, (yr, wk, wk_label) in enumerate(future_labels):
             results.append({
@@ -224,14 +198,10 @@ def run_forecasting(engine=None, horizon: int = None):
                 "upper_bound": float(result["upper"][j]),
                 "model_name": result["model"],
             })
-
         if (i + 1) % 50 == 0:
             logger.warning(f"  Progress: {i+1}/{total} (skipped: {skipped})")
 
-    logger.warning(
-        f"Skipped {skipped}/{total} groups "
-        f"(history < {FORECAST_MIN_HISTORY_WEEKS} week(s))."
-    )
+    logger.warning(f"Skipped {skipped}/{total} groups (history < {FORECAST_MIN_HISTORY_WEEKS} week(s)).")
 
     if not results:
         logger.warning("No forecasts generated.")
