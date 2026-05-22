@@ -14,6 +14,7 @@ _DEFAULT_ARGS = {
     "execution_timeout": timedelta(hours=4),
 }
 
+
 def task_init_db():
     import os, sys
     _CANDIDATES_LOCAL = [
@@ -54,8 +55,8 @@ def task_seed_dim_time():
     conn = get_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        start = date(2021, 1, 1)
-        end = date(2028, 12, 31)
+        start = date(2023, 1, 1)
+        end = date(2026, 12, 31)
         d = start
         while d <= end:
             iso = d.isocalendar()
@@ -129,7 +130,7 @@ def task_extract_periodic(execution_date):
 
 
 def task_preprocess_kaggle(kaggle_raw_path):
-    import os, sys
+    import os, sys, logging
     from pathlib import Path
     _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
@@ -144,8 +145,12 @@ def task_preprocess_kaggle(kaggle_raw_path):
         p = os.path.join(root, sub) if sub else root
         if p not in sys.path:
             sys.path.insert(0, p)
+    _logger = logging.getLogger(__name__)
     from transform.preprocess import preprocess_file
-    if not kaggle_raw_path or not Path(kaggle_raw_path).exists():
+    if not kaggle_raw_path:
+        _logger.info("Tidak ada data baru dari Kaggle, skip preprocess.")
+        return None
+    if not Path(kaggle_raw_path).exists():
         fallback = os.path.join(root, "data", "raw", "kaggle_staged.parquet")
         if not os.path.exists(fallback):
             raise FileNotFoundError(
@@ -221,105 +226,7 @@ def task_ner_periodic(periodic_preprocessed_path):
     return str(run_ner(periodic_preprocessed_path))
 
 
-def task_embed_kaggle(kaggle_preprocessed_path):
-    import os, sys
-    import gc, logging
-    _CANDIDATES_LOCAL = [
-        "/opt/airflow/dags/inter24-dag/talent-trackk",
-        "/home/inter24/dags/talent-trackk",
-        "/home/inter24/inter24-dag/talent-trackk",
-    ]
-    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
-    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
-    if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
-    for sub in _SUBS_LOCAL:
-        p = os.path.join(root, sub) if sub else root
-        if p not in sys.path:
-            sys.path.insert(0, p)
-    import numpy as np
-    from pathlib import Path
-    _logger = logging.getLogger(__name__)
-    try:
-        import torch
-        torch.set_num_threads(2)
-        torch.set_num_interop_threads(2)
-    except Exception:
-        pass
-    if not kaggle_preprocessed_path or not Path(kaggle_preprocessed_path).exists():
-        return ""
-    try:
-        from transform.embed import compute_and_save_embeddings
-        result = compute_and_save_embeddings(kaggle_preprocessed_path)
-        gc.collect()
-        return str(result)
-    except MemoryError as e:
-        _logger.error(f"MemoryError during embedding (kaggle): {e}")
-        from config import DATA_PROCESSED_DIR, EMBEDDING_DIM, SBERT_DIM
-        stem = Path(kaggle_preprocessed_path).stem
-        out_path = DATA_PROCESSED_DIR / f"{stem}_embeddings.npz"
-        np.savez_compressed(
-            out_path,
-            source_hashes=np.array([], dtype=str),
-            jobbert=np.zeros((0, EMBEDDING_DIM), dtype=np.float32),
-            sbert=np.zeros((0, SBERT_DIM), dtype=np.float32),
-        )
-        return str(out_path)
-    except Exception as e:
-        _logger.error(f"Embedding task failed (kaggle): {e}", exc_info=True)
-        raise
-
-
-def task_embed_periodic(periodic_preprocessed_path):
-    import os, sys
-    import gc, logging
-    _CANDIDATES_LOCAL = [
-        "/opt/airflow/dags/inter24-dag/talent-trackk",
-        "/home/inter24/dags/talent-trackk",
-        "/home/inter24/inter24-dag/talent-trackk",
-    ]
-    _SUBS_LOCAL = ["", "extract", "transform", "load", "analysis"]
-    root = next((p for p in _CANDIDATES_LOCAL if os.path.isfile(os.path.join(p, "db.py"))), None)
-    if root is None:
-        raise RuntimeError(f"PROJECT_ROOT tidak ditemukan. Dicari di: {_CANDIDATES_LOCAL}")
-    for sub in _SUBS_LOCAL:
-        p = os.path.join(root, sub) if sub else root
-        if p not in sys.path:
-            sys.path.insert(0, p)
-    import numpy as np
-    from pathlib import Path
-    _logger = logging.getLogger(__name__)
-    try:
-        import torch
-        torch.set_num_threads(2)
-        torch.set_num_interop_threads(2)
-    except Exception:
-        pass
-    if not periodic_preprocessed_path or not Path(periodic_preprocessed_path).exists():
-        return ""
-    try:
-        from transform.embed import compute_and_save_embeddings
-        result = compute_and_save_embeddings(periodic_preprocessed_path)
-        gc.collect()
-        return str(result)
-    except MemoryError as e:
-        _logger.error(f"MemoryError during embedding (periodic): {e}")
-        from config import DATA_PROCESSED_DIR, EMBEDDING_DIM, SBERT_DIM
-        stem     = Path(periodic_preprocessed_path).stem
-        out_path = DATA_PROCESSED_DIR / f"{stem}_embeddings.npz"
-        np.savez_compressed(
-            out_path,
-            source_hashes=np.array([], dtype=str),
-            jobbert=np.zeros((0, EMBEDDING_DIM), dtype=np.float32),
-            sbert=np.zeros((0, SBERT_DIM), dtype=np.float32),
-        )
-        return str(out_path)
-    except Exception as e:
-        _logger.error(f"Embedding task failed (periodic): {e}", exc_info=True)
-        raise
-
-
-def task_dedup_kaggle(kaggle_preprocessed_path, kaggle_embeddings_path):
+def task_dedup_kaggle(kaggle_preprocessed_path):
     import os, sys
     from pathlib import Path
     _CANDIDATES_LOCAL = [
@@ -338,11 +245,10 @@ def task_dedup_kaggle(kaggle_preprocessed_path, kaggle_embeddings_path):
     from transform.dedup import run_dedup
     if not kaggle_preprocessed_path or not Path(kaggle_preprocessed_path).exists():
         return ""
-    emb = kaggle_embeddings_path if (kaggle_embeddings_path and Path(kaggle_embeddings_path).exists()) else None
-    return str(run_dedup(kaggle_preprocessed_path, embeddings_path=emb))
+    return str(run_dedup(kaggle_preprocessed_path))
 
 
-def task_dedup_periodic(periodic_preprocessed_path, periodic_embeddings_path):
+def task_dedup_periodic(periodic_preprocessed_path):
     import os, sys
     import psycopg2.extras
     from pathlib import Path
@@ -370,13 +276,11 @@ def task_dedup_periodic(periodic_preprocessed_path, periodic_embeddings_path):
         existing_hashes = {r["source_hash"] for r in cur.fetchall()}
     finally:
         conn.close()
-    emb = periodic_embeddings_path if (periodic_embeddings_path and Path(periodic_embeddings_path).exists()) else None
-    return str(run_dedup(periodic_preprocessed_path, embeddings_path=emb, existing_hashes=existing_hashes))
+    return str(run_dedup(periodic_preprocessed_path, existing_hashes=existing_hashes))
 
 
-def task_load_kaggle(kaggle_deduped_path, kaggle_entities_path, kaggle_embeddings_path):
+def task_load_kaggle(kaggle_deduped_path, kaggle_entities_path):
     import os, sys
-    import numpy as np
     import pandas as pd
     from pathlib import Path
     _CANDIDATES_LOCAL = [
@@ -398,15 +302,14 @@ def task_load_kaggle(kaggle_deduped_path, kaggle_entities_path, kaggle_embedding
         upsert_dim_entity,
     )
     from load.load_facts import (
-        load_fact_job_posting, load_bridge_job_skill,
-        load_bridge_job_entity, load_embeddings,
+        load_fact_job_posting, load_bridge_job_skill, load_bridge_job_entity,
     )
     if not kaggle_deduped_path or not Path(kaggle_deduped_path).exists():
         return
     df = pd.read_parquet(kaggle_deduped_path)
     if df.empty:
         return
-    df = df[pd.to_datetime(df["date_parsed"]).dt.year >= 2024]
+    df = df[pd.to_datetime(df["date_parsed"]).dt.year >= 2023]
     if df.empty:
         return
     entities_df = (
@@ -427,15 +330,10 @@ def task_load_kaggle(kaggle_deduped_path, kaggle_entities_path, kaggle_embedding
             load_bridge_job_skill(entities_df, job_id_map, skill_map)
         if entity_map:
             load_bridge_job_entity(entities_df, job_id_map, entity_map)
-    if kaggle_embeddings_path and Path(kaggle_embeddings_path).exists():
-        npz = np.load(kaggle_embeddings_path, allow_pickle=True)
-        if npz["jobbert"].shape[0] > 0:
-            load_embeddings(df, job_id_map, npz["jobbert"], npz["sbert"])
 
 
-def task_load_periodic(periodic_deduped_path, periodic_entities_path, periodic_embeddings_path):
+def task_load_periodic(periodic_deduped_path, periodic_entities_path):
     import os, sys
-    import numpy as np
     import pandas as pd
     from pathlib import Path
     _CANDIDATES_LOCAL = [
@@ -457,15 +355,14 @@ def task_load_periodic(periodic_deduped_path, periodic_entities_path, periodic_e
         upsert_dim_entity,
     )
     from load.load_facts import (
-        load_fact_job_posting, load_bridge_job_skill,
-        load_bridge_job_entity, load_embeddings,
+        load_fact_job_posting, load_bridge_job_skill, load_bridge_job_entity,
     )
     if not periodic_deduped_path or not Path(periodic_deduped_path).exists():
         return
     df = pd.read_parquet(periodic_deduped_path)
     if df.empty:
         return
-    df = df[pd.to_datetime(df["date_parsed"]).dt.year >= 2024]
+    df = df[pd.to_datetime(df["date_parsed"]).dt.year >= 2023]
     if df.empty:
         return
     entities_df = (
@@ -486,10 +383,6 @@ def task_load_periodic(periodic_deduped_path, periodic_entities_path, periodic_e
             load_bridge_job_skill(entities_df, job_id_map, skill_map)
         if entity_map:
             load_bridge_job_entity(entities_df, job_id_map, entity_map)
-    if periodic_embeddings_path and Path(periodic_embeddings_path).exists():
-        npz = np.load(periodic_embeddings_path, allow_pickle=True)
-        if npz["jobbert"].shape[0] > 0:
-            load_embeddings(df, job_id_map, npz["jobbert"], npz["sbert"])
 
 
 def task_refresh_views():
@@ -586,25 +479,17 @@ with DAG(
     k_ner = _epo(
         "ner_kaggle", task_ner_kaggle,
         {"kaggle_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_kaggle') }}"},
-    )
-    k_embed = _epo(
-        "embed_kaggle", task_embed_kaggle,
-        {"kaggle_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_kaggle') }}"},
         retries=0, execution_timeout=timedelta(hours=6),
     )
     k_dedup = _epo(
         "dedup_kaggle", task_dedup_kaggle,
-        {
-            "kaggle_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_kaggle') }}",
-            "kaggle_embeddings_path": "{{ ti.xcom_pull(task_ids='embed_kaggle') }}",
-        },
+        {"kaggle_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_kaggle') }}"},
     )
     k_load = _epo(
         "load_kaggle", task_load_kaggle,
         {
             "kaggle_deduped_path": "{{ ti.xcom_pull(task_ids='dedup_kaggle') }}",
             "kaggle_entities_path": "{{ ti.xcom_pull(task_ids='ner_kaggle') }}",
-            "kaggle_embeddings_path": "{{ ti.xcom_pull(task_ids='embed_kaggle') }}",
         },
     )
     k_refresh = _epo("refresh_views", task_refresh_views)
@@ -612,8 +497,8 @@ with DAG(
 
     (
         k_init_db >> k_seed_time >> k_setup_partitions >> k_extract
-        >> k_preprocess >> [k_ner, k_embed]
-        >> k_dedup >> k_load >> k_refresh >> k_forecast
+        >> k_preprocess >> [k_ner, k_dedup]
+        >> k_load >> k_refresh >> k_forecast
     )
 
 
@@ -642,25 +527,17 @@ with DAG(
     p_ner = _epo(
         "ner_periodic", task_ner_periodic,
         {"periodic_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_periodic') }}"},
-    )
-    p_embed = _epo(
-        "embed_periodic", task_embed_periodic,
-        {"periodic_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_periodic') }}"},
         retries=0, execution_timeout=timedelta(hours=2),
     )
     p_dedup = _epo(
         "dedup_periodic", task_dedup_periodic,
-        {
-            "periodic_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_periodic') }}",
-            "periodic_embeddings_path": "{{ ti.xcom_pull(task_ids='embed_periodic') }}",
-        },
+        {"periodic_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_periodic') }}"},
     )
     p_load = _epo(
         "load_periodic", task_load_periodic,
         {
             "periodic_deduped_path": "{{ ti.xcom_pull(task_ids='dedup_periodic') }}",
             "periodic_entities_path": "{{ ti.xcom_pull(task_ids='ner_periodic') }}",
-            "periodic_embeddings_path": "{{ ti.xcom_pull(task_ids='embed_periodic') }}",
         },
     )
     p_refresh = _epo("refresh_views", task_refresh_views)
@@ -668,6 +545,6 @@ with DAG(
 
     (
         p_init_db >> p_seed_time >> p_setup_partitions >> p_extract
-        >> p_preprocess >> [p_ner, p_embed]
-        >> p_dedup >> p_load >> p_refresh >> p_forecast
+        >> p_preprocess >> [p_ner, p_dedup]
+        >> p_load >> p_refresh >> p_forecast
     )

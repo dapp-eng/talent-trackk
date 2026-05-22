@@ -19,24 +19,23 @@ def _is_sparse(values: np.ndarray, threshold: float = 0.60) -> bool:
     return (np.sum(values == 0) / len(values)) > threshold
 
 
-def _linear_trend(values: np.ndarray, horizon: int) -> dict:
-    n = len(values)
-    if n == 1:
-        pred_val = max(float(values[0]), 0.0)
-        preds = np.full(horizon, pred_val)
-        return {"predictions": preds, "lower": preds.copy(), "upper": preds.copy(), "model": "linear_trend"}
-    x = np.arange(n)
-    coeffs = np.polyfit(x, values, 1)
-    x_future = np.arange(n, n + horizon)
-    preds = np.maximum(np.polyval(coeffs, x_future), 0)
-    residuals = values - np.polyval(coeffs, x)
-    std = float(np.std(residuals))
-    return {
-        "predictions": preds,
-        "lower": np.maximum(preds - 1.96 * std, 0),
-        "upper": preds + 1.96 * std,
-        "model": "linear_trend",
-    }
+def _exp_smoothing(values: np.ndarray, horizon: int) -> dict:
+    try:
+        from statsmodels.tsa.holtwinters import SimpleExpSmoothing
+        fit = SimpleExpSmoothing(values).fit(optimized=True)
+        preds = np.maximum(fit.forecast(horizon), 0)
+        std = float(np.std(values)) if len(values) > 1 else 0.0
+        return {
+            "predictions": preds,
+            "lower": np.maximum(preds - 1.96 * std, 0),
+            "upper": preds + 1.96 * std,
+            "model": "exp_smoothing",
+        }
+    except Exception as e:
+        logger.warning(f"Exp smoothing failed: {e}. Falling back to mean.")
+        avg = float(np.mean(values))
+        preds = np.full(horizon, max(avg, 0))
+        return {"predictions": preds, "lower": preds.copy(), "upper": preds.copy(), "model": "mean"}
 
 
 def _croston(values: np.ndarray, horizon: int) -> dict:
@@ -77,14 +76,14 @@ def _holt_winters(values: np.ndarray, horizon: int) -> dict:
         upper = ci.quantile(0.975, axis=1).values
         return {"predictions": preds, "lower": lower, "upper": upper, "model": "holt_winters"}
     except Exception as e:
-        logger.warning(f"Holt-Winters failed: {e}. Falling back to linear_trend.")
-        return _linear_trend(values, horizon)
+        logger.warning(f"Holt-Winters failed: {e}. Falling back to exp_smoothing.")
+        return _exp_smoothing(values, horizon)
 
 
 def _prophet(values: np.ndarray, horizon: int) -> dict:
     try:
         from prophet import Prophet
-        n    = len(values)
+        n = len(values)
         df_p = pd.DataFrame({
             "ds": pd.date_range(start="2024-01-01", periods=n, freq="W"),
             "y":  values,
@@ -121,7 +120,7 @@ def _forecast_series(series: pd.Series, horizon: int) -> dict | None:
         return _croston(values, horizon)
 
     if n < 8:
-        return _linear_trend(values, horizon)
+        return _exp_smoothing(values, horizon)
     elif n < 24:
         return _holt_winters(values, horizon)
     else:
@@ -179,10 +178,10 @@ def run_forecasting(engine=None, horizon: int = None):
         lf = pd.Timestamp(last_forecast).tz_localize(None) if pd.Timestamp(last_forecast).tzinfo else pd.Timestamp(last_forecast)
         ld = pd.Timestamp(last_data)
         if lf >= ld:
-            logger.info("Tidak ada data baru sejak forecast terakhir, skip forecasting.")
+            logger.warning("Tidak ada data baru sejak forecast terakhir, skip forecasting.")
             return
 
-    logger.info("Loading weekly skill demand data...")
+    logger.warning("Loading weekly skill demand data...")
     df = _get_weekly_skill_data(engine)
     if df.empty:
         logger.warning("No data in mv_weekly_skill_demand. Skipping forecasting.")
@@ -191,7 +190,7 @@ def run_forecasting(engine=None, horizon: int = None):
     group_cols = ["skill_name", "job_category", "global_region"]
     groups = df.groupby(group_cols)
     total = len(groups)
-    logger.info(
+    logger.warning(
         f"Forecasting {total} combinations, horizon={horizon} weeks, "
         f"min_history={FORECAST_MIN_HISTORY_WEEKS} week(s)"
     )
@@ -227,9 +226,9 @@ def run_forecasting(engine=None, horizon: int = None):
             })
 
         if (i + 1) % 50 == 0:
-            logger.info(f"  Progress: {i+1}/{total} (skipped: {skipped})")
+            logger.warning(f"  Progress: {i+1}/{total} (skipped: {skipped})")
 
-    logger.info(
+    logger.warning(
         f"Skipped {skipped}/{total} groups "
         f"(history < {FORECAST_MIN_HISTORY_WEEKS} week(s))."
     )
@@ -239,7 +238,7 @@ def run_forecasting(engine=None, horizon: int = None):
         return
 
     forecast_df = pd.DataFrame(results)
-    logger.info(f"Generated {len(forecast_df)} forecast rows. Loading to DB...")
+    logger.warning(f"Generated {len(forecast_df)} forecast rows. Loading to DB...")
 
     with get_cursor() as cur:
         cur.execute("SELECT skill_id, skill_name FROM dim_skill;")
@@ -282,10 +281,10 @@ def run_forecasting(engine=None, horizon: int = None):
             ON CONFLICT (skill_id, job_category, global_region, forecast_week_label)
             DO UPDATE SET
                 predicted_count = EXCLUDED.predicted_count,
-                lower_bound = EXCLUDED.lower_bound,
-                upper_bound = EXCLUDED.upper_bound,
-                model_name = EXCLUDED.model_name,
-                generated_at = NOW();
+                lower_bound     = EXCLUDED.lower_bound,
+                upper_bound     = EXCLUDED.upper_bound,
+                model_name      = EXCLUDED.model_name,
+                generated_at    = NOW();
             """,
             rows,
             page_size=500,
@@ -299,7 +298,7 @@ def run_forecasting(engine=None, horizon: int = None):
             );
         """)
         conn.commit()
-        logger.info(f"Forecast: {len(rows)} rows inserted/updated, old generations cleaned.")
+        logger.warning(f"Forecast: {len(rows)} rows inserted/updated, old generations cleaned.")
     except Exception:
         conn.rollback()
         raise

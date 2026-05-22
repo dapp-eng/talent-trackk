@@ -124,18 +124,6 @@ CREATE TABLE IF NOT EXISTS bridge_job_entity (
 CREATE INDEX IF NOT EXISTS idx_bridge_entity_entity ON bridge_job_entity (entity_id);
 CREATE INDEX IF NOT EXISTS idx_bridge_entity_job    ON bridge_job_entity (job_id);
 
-CREATE TABLE IF NOT EXISTS job_embeddings (
-    job_id BIGINT PRIMARY KEY,
-    jobbert_vector vector(768),
-    sbert_vector vector(384)
-);
-
-CREATE INDEX IF NOT EXISTS idx_job_embeddings_jobbert
-    ON job_embeddings USING ivfflat (jobbert_vector vector_cosine_ops) WITH (lists = 100);
-
-CREATE INDEX IF NOT EXISTS idx_job_embeddings_sbert
-    ON job_embeddings USING ivfflat (sbert_vector vector_cosine_ops) WITH (lists = 100);
-
 CREATE TABLE IF NOT EXISTS forecast_skill_demand (
     forecast_id BIGSERIAL PRIMARY KEY,
     skill_id INT REFERENCES dim_skill(skill_id),

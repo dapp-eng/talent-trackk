@@ -1,7 +1,7 @@
 import psycopg2
 import psycopg2.extras
 from contextlib import contextmanager
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from config import DB_CONFIG, DB_URL
 
 
@@ -45,7 +45,7 @@ def run_partition_setup():
         id_end INT;
         tbl TEXT;
     BEGIN
-        FOR yr IN 2021..2028 LOOP
+        FOR yr IN 2023..2026 LOOP
             tbl := 'fact_job_posting_' || yr;
             IF NOT EXISTS (
                 SELECT 1 FROM pg_class c
@@ -59,9 +59,7 @@ def run_partition_setup():
                         'CREATE TABLE %I PARTITION OF fact_job_posting FOR VALUES FROM (%s) TO (%s)',
                         tbl, id_start, id_end
                     );
-                    RAISE NOTICE 'Created partition % (% to %)', tbl, id_start, id_end;
-                ELSE
-                    RAISE NOTICE 'Skipping partition % — dim_time belum terisi untuk tahun %', tbl, yr;
+                    RAISE NOTICE 'Created partition %', tbl;
                 END IF;
             ELSE
                 RAISE NOTICE 'Partition % sudah ada, skip.', tbl;
@@ -77,6 +75,7 @@ def run_partition_setup():
 def refresh_materialized_views():
     views = [
         "mv_weekly_skill_demand",
+        "mv_weekly_entity_demand",
         "mv_platform_monthly",
         "mv_company_hiring",
     ]
