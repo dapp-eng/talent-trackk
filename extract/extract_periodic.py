@@ -64,7 +64,7 @@ def _align_columns(df: pd.DataFrame, search_term: str, location: str) -> pd.Data
 
 
 def _scrape_one(scrape_jobs, term: str, location: str, log: dict) -> pd.DataFrame:
-    logger.info(f"Scraping: {term!r} @ {location!r} ...")
+    print(f"Scraping: {term!r} @ {location!r} ...")
     try:
         df = scrape_jobs(
             site_name=JOBSPY_SITES,
@@ -77,7 +77,7 @@ def _scrape_one(scrape_jobs, term: str, location: str, log: dict) -> pd.DataFram
             logger.info(f"  {term!r} @ {location!r}: 0 result")
             return pd.DataFrame()
         df = _align_columns(df, term, location)
-        logger.info(f"  {term!r} @ {location!r}: {len(df)} raw results")
+        print(f"  {term!r} @ {location!r}: {len(df)} raw results")
         log["runs"].append({"term": term, "location": location, "rows": len(df)})
         return df
     except Exception as e:
@@ -183,7 +183,7 @@ def scrape_periodic(execution_date: str = None) -> Path:
                         seen_hashes.update(new_rows["source_hash"].values)
                         all_frames.append(new_rows)
                         total_unique += len(new_rows)
-                        logger.info(
+                        print(
                             f"  {term!r} / {location!r}: +{len(new_rows)} "
                             f"(total: {total_unique}/{PERIODIC_ROW_LIMIT})"
                         )
