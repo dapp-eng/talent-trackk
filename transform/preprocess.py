@@ -282,8 +282,36 @@ def parse_date(val) -> pd.Timestamp:
         (r"^(\d+)\s+weeks?\s+ago$", "weeks"),
         (r"^(\d+)\s+months?\s+ago$", "months"),
         (r"^just\s+posted$", 0),
-        (r"^30\+\s+days\s+ago$", 30),
-        (r"^over\s+30\s+days\s+ago$", 30),
+        (r"^be\s+an\s+early\s+applicant$", 0),
+        (r"^actively\s+hiring$", 0),
+        (r"^30\+\s+days?\s+ago$", 30),
+        (r"^over\s+30\s+days?\s+ago$", 30),
+        (r"^(\d+)\s+minuten?\s+geleden$", "minutes"),
+        (r"^(\d+)\s+uur\s+geleden$", "hours"),
+        (r"^(\d+)\s+dagen?\s+geleden$", "days"),
+        (r"^(\d+)\s+weken?\s+geleden$", "weeks"),
+        (r"^(\d+)\s+maanden?\s+geleden$", "months"),
+        (r"^(\d+)\s+minutos?\s+atr[aá]s$", "minutes"),
+        (r"^(\d+)\s+horas?\s+atr[aá]s$", "hours"),
+        (r"^(\d+)\s+d[ií]as?\s+atr[aá]s$", "days"),
+        (r"^(\d+)\s+semanas?\s+atr[aá]s$", "weeks"),
+        (r"^(\d+)\s+meses?\s+atr[aá]s$", "months"),
+        (r"^il\s+y\s+a\s+(\d+)\s+heure", "hours"),
+        (r"^il\s+y\s+a\s+(\d+)\s+jour", "days"),
+        (r"^il\s+y\s+a\s+(\d+)\s+semaine", "weeks"),
+        (r"^il\s+y\s+a\s+(\d+)\s+mois", "months"),
+        (r"^vor\s+(\d+)\s+stunden?$", "hours"),
+        (r"^vor\s+(\d+)\s+tagen?$", "days"),
+        (r"^vor\s+(\d+)\s+wochen?$", "weeks"),
+        (r"^vor\s+(\d+)\s+monaten?$", "months"),
+        (r"^(\d+)\s+timmar?\s+sedan$", "hours"),
+        (r"^(\d+)\s+dagar?\s+sedan$", "days"),
+        (r"^(\d+)\s+veckor?\s+sedan$", "weeks"),
+        (r"^(\d+)\s+månader?\s+sedan$", "months"),
+        (r"^(\d+)\s+timer?\s+siden$", "hours"),
+        (r"^(\d+)\s+dager?\s+siden$", "days"),
+        (r"^(\d+)\s+uker?\s+siden$", "weeks"),
+        (r"^(\d+)\s+måneder?\s+siden$", "months"),
     ]
     now = pd.Timestamp.now().normalize()
     for pattern, offset in relative_map:
@@ -291,22 +319,46 @@ def parse_date(val) -> pd.Timestamp:
         if m:
             if isinstance(offset, int):
                 return now - pd.Timedelta(days=offset)
-            elif offset == "days":
-                return now - pd.Timedelta(days=int(m.group(1)))
+            elif offset == "minutes":
+                return now - pd.Timedelta(minutes=int(m.group(1)))
             elif offset == "hours":
                 return now - pd.Timedelta(hours=int(m.group(1)))
+            elif offset == "days":
+                return now - pd.Timedelta(days=int(m.group(1)))
             elif offset == "weeks":
                 return now - pd.Timedelta(weeks=int(m.group(1)))
             elif offset == "months":
                 return now - pd.DateOffset(months=int(m.group(1)))
 
+    explicit_formats = [
+        "%Y-%m-%d", "%d-%m-%Y", "%m-%d-%Y",
+        "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y",
+        "%d.%m.%Y", "%Y.%m.%d",
+        "%d %b %Y", "%d %B %Y",
+        "%b %d, %Y", "%B %d, %Y",
+        "%b %d %Y", "%B %d %Y",
+        "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%d %H:%M:%S",
+        "%d-%b-%Y", "%d %b, %Y",
+        "%m/%Y", "%b %Y", "%B %Y",
+    ]
+    for fmt in explicit_formats:
+        try:
+            parsed = pd.to_datetime(val_str, format=fmt)
+            if pd.notna(parsed):
+                return parsed
+        except Exception:
+            continue
+
     try:
         parsed = pd.to_datetime(val, infer_datetime_format=True, utc=False)
-        if pd.isna(parsed):
-            return pd.NaT
-        return parsed
+        if pd.notna(parsed):
+            return parsed
     except Exception:
-        return pd.NaT
+        pass
+
+    logger.warning(f"  parse_date unresolved: repr={repr(val)}")
+    return pd.NaT
 
 
 def parse_location(loc) -> tuple:
@@ -519,16 +571,21 @@ def preprocess(df: pd.DataFrame, source_label: str = "unknown") -> pd.DataFrame:
         lambda x: x.tz_localize(None) if pd.notna(x) and hasattr(x, "tzinfo") and x.tzinfo is not None else x
     )
 
+    nat_mask = df["date_parsed"].isna()
+    nat_count = nat_mask.sum()
+    if nat_count > 0:
+        scraping_date = pd.Timestamp.now().normalize()
+        logger.warning(f"  Filling {nat_count} unresolvable dates with scraping date: {scraping_date.date()}")
+        df.loc[nat_mask, "date_parsed"] = scraping_date
+
     before = len(df)
-    df = df[df["date_parsed"].notna()].copy()
-    after_nat = len(df)
     df = df[df["date_parsed"] >= pd.Timestamp("2023-01-01")].copy()
     after_old = len(df)
     df = df[df["date_parsed"] <= pd.Timestamp.now() + pd.Timedelta(days=1)].copy()
     after_future = len(df)
     logger.warning(
-        f"  Date filter: {before} → {after_nat} (dropped {before - after_nat} NaT)"
-        f" → {after_old} (dropped {after_nat - after_old} pre-2023)"
+        f"  Date filter: {before}"
+        f" → {after_old} (dropped {before - after_old} pre-2023)"
         f" → {after_future} (dropped {after_old - after_future} future)"
     )
 
