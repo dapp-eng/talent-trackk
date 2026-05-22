@@ -61,7 +61,7 @@ def _align_columns(df: pd.DataFrame, location: str) -> pd.DataFrame:
 
 
 def _scrape_one(scrape_jobs, location: str, log: dict) -> pd.DataFrame:
-    logger.warning(f"→ Scraping: @ {location!r} ...")
+    logger.warning(f"Scraping: @ {location!r} ...")
     try:
         df = scrape_jobs(
             site_name=JOBSPY_SITES,
@@ -78,7 +78,7 @@ def _scrape_one(scrape_jobs, location: str, log: dict) -> pd.DataFrame:
         return df
     except Exception as e:
         err_msg = str(e)
-        logger.warning(f"  ✗ JobSpy failed: location={location!r} → {err_msg}")
+        logger.warning(f"JobSpy failed: location={location!r} → {err_msg}")
         log["errors"].append({"location": location, "error": err_msg})
         return pd.DataFrame()
 
@@ -172,7 +172,7 @@ def scrape_periodic(execution_date: str = None) -> Path:
                     all_frames.append(new_rows)
                     total_unique += len(new_rows)
                     logger.warning(
-                        f"  ✓ @ {location!r}: +{len(new_rows)} baris "
+                        f"  DONE @ {location!r}: +{len(new_rows)} baris "
                         f"(total: {total_unique}/{PERIODIC_ROW_LIMIT})"
                     )
 
