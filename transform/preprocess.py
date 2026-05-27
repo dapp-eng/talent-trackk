@@ -857,6 +857,21 @@ def clean_text(text) -> str:
     return text.lower()
 
 
+def clean_text_ner(text) -> str:
+    if text is None or (isinstance(text, float) and np.isnan(text)):
+        return ""
+    text = str(text)
+    if not text.strip():
+        return ""
+    text = unicodedata.normalize("NFKD", text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"&[a-zA-Z#0-9]+;", " ", text)
+    text = re.sub(r"https?://\S+", " ", text)
+    text = re.sub(r"[^\w\s\.,\-\+\#\/\(\)\:]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
 def parse_date(val) -> pd.Timestamp:
     if val is None:
         return pd.NaT
@@ -1214,6 +1229,7 @@ def preprocess(df: pd.DataFrame, source_label: str = "unknown") -> pd.DataFrame:
     title_col = df.get("title", pd.Series(dtype=str))
     df["title_clean"] = title_col.apply(clean_text)
     df["description_clean"] = df.get("description", pd.Series(dtype=str)).apply(clean_text)
+    df["description_ner"] = df.get("description", pd.Series(dtype=str)).apply(clean_text_ner)
     df["company_clean"] = df.get("company", pd.Series(dtype=str)).apply(
         lambda x: clean_text(x).title() if clean_text(x) else "Unknown"
     )
