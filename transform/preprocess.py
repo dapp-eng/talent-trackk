@@ -1259,8 +1259,8 @@ def preprocess(df: pd.DataFrame, source_label: str = "unknown") -> pd.DataFrame:
             logger.warning(f"  Filled {unknown_mask.sum()} unknown countries from search_location")
     df["global_region"] = df["loc_country"].map(REGION_MAP).fillna("Other")
 
-    df["job_level"] = title_col.apply(infer_job_level)
-    df["job_category"] = title_col.apply(infer_job_category)
+    df["job_level"] = df["title_clean"].apply(infer_job_level)
+    df["job_category"] = df["title_clean"].apply(infer_job_category)
 
     df = normalize_salary(df)
     df["is_remote"] = df.get("is_remote", pd.Series(dtype=object)).apply(normalize_remote)

@@ -31,7 +31,7 @@ LABEL_TO_TYPE = {
 def _normalize_entity(word: str) -> str:
     word = re.sub(r"\s+", " ", word).strip()
     word = re.sub(r"^[^\w]+|[^\w]+$", "", word)
-    return word
+    return word.lower()
 
 
 def _load_gliner():
@@ -67,16 +67,15 @@ def _run_gliner(model, texts: list, src_hashes: list) -> list:
                     label = ent.get("label", "")
                     entity_type = LABEL_TO_TYPE.get(label, "Skill")
                     score = round(float(ent.get("score", 0.0)), 4)
-                    key = word.lower()
-                    if key in seen:
+                    if word in seen:
                         continue
-                    seen.add(key)
+                    seen.add(word)
                     records.append({
                         "source_hash": src_hash,
                         "entity_text": word,
                         "entity_type": entity_type,
                         "source_model": GLINER_MODEL,
-                        "extraction_confidence":  score,
+                        "extraction_confidence": score,
                     })
             except Exception as e:
                 logger.warning(f"GliNER inference failed row {i}: {e}")
@@ -117,7 +116,7 @@ def extract_entities_dataframe(
     seen = set()
     deduped = []
     for r in records:
-        key = (r["source_hash"], r["entity_text"].lower(), r["entity_type"])
+        key = (r["source_hash"], r["entity_text"], r["entity_type"])
         if key not in seen:
             seen.add(key)
             deduped.append(r)

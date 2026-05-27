@@ -26,7 +26,7 @@ def _content_hash(row: pd.Series) -> str:
 def _strict_dedup_key(row: pd.Series) -> str:
     title = _clean_text(str(row.get("title_clean") or row.get("title") or ""))
     company = _clean_text(str(row.get("company_clean") or row.get("company") or ""))
-    location = _clean_text(str(row.get("location") or row.get("loc_city") or ""))
+    location = _clean_text(str(row.get("loc_city") or row.get("location") or ""))
     date = str(row.get("date_parsed") or row.get("date_posted") or "").strip()
 
     if not any([title, company, location, date]):

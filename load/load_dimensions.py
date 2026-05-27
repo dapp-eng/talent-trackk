@@ -134,8 +134,11 @@ def upsert_dim_skill(entities_df: pd.DataFrame) -> dict:
     if entities_df.empty:
         return {}
 
+    normalized = entities_df.copy()
+    normalized["entity_text"] = normalized["entity_text"].str.lower().str.strip()
+
     skills = (
-        entities_df[["entity_text", "entity_type", "source_model"]]
+        normalized[["entity_text", "entity_type", "source_model"]]
         .drop_duplicates("entity_text")
         .rename(columns={"entity_text": "skill_name", "entity_type": "skill_type", "source_model": "skill_domain"})
     )

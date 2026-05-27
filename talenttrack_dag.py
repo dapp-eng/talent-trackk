@@ -56,7 +56,7 @@ def task_seed_dim_time():
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         start = date(2023, 1, 1)
-        end = date(2026, 12, 31)
+        end = date(2027, 12, 31)
         d = start
         while d <= end:
             iso = d.isocalendar()
@@ -228,6 +228,7 @@ def task_ner_periodic(periodic_preprocessed_path):
 
 def task_dedup_kaggle(kaggle_preprocessed_path):
     import os, sys
+    import psycopg2.extras
     from pathlib import Path
     _CANDIDATES_LOCAL = [
         "/opt/airflow/dags/inter24-dag/talent-trackk",
@@ -243,9 +244,17 @@ def task_dedup_kaggle(kaggle_preprocessed_path):
         if p not in sys.path:
             sys.path.insert(0, p)
     from transform.dedup import run_dedup
+    from db import get_connection
     if not kaggle_preprocessed_path or not Path(kaggle_preprocessed_path).exists():
         return ""
-    return str(run_dedup(kaggle_preprocessed_path))
+    conn = get_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT DISTINCT source_hash FROM fact_job_posting;")
+        existing_hashes = {r["source_hash"] for r in cur.fetchall()}
+    finally:
+        conn.close()
+    return str(run_dedup(kaggle_preprocessed_path, existing_hashes=existing_hashes))
 
 
 def task_dedup_periodic(periodic_preprocessed_path):

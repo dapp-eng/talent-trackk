@@ -34,9 +34,11 @@ def _resolve_location_id(row: pd.Series, location_map: dict):
     key = (city, country)
     if key in location_map:
         return location_map[key]
-    for k, v in location_map.items():
-        if k[1] == country:
-            return v
+
+    fallback_key = ("", country)
+    if fallback_key in location_map:
+        return location_map[fallback_key]
+
     return None
 
 
@@ -61,9 +63,9 @@ def load_fact_job_posting(
         location_id = _resolve_location_id(row, location_map)
         company_name = str(row.get("company_clean", "Unknown")).strip() or "Unknown"
         company_id = company_map.get(company_name, company_map.get("Unknown"))
-        title = str(row.get("title_clean",   "")).strip()[:255] or "unknown"
-        level = str(row.get("job_level",     "Unknown"))
-        cat = str(row.get("job_category",  "Other"))
+        title = str(row.get("title_clean", "")).strip()[:255] or "unknown"
+        level = str(row.get("job_level", "Unknown"))
+        cat = str(row.get("job_category", "Other"))
         position_id = position_map.get((title, level, cat))
         platform = str(row.get("platform_norm", "LinkedIn")).strip() or "LinkedIn"
         platform_id = platform_map.get(platform, platform_map.get("LinkedIn"))
@@ -83,7 +85,7 @@ def load_fact_job_posting(
             1,
             age_days,
             bool(row.get("has_salary", False)),
-            bool(row.get("is_remote",  False)),
+            bool(row.get("is_remote", False)),
             _safe_float(row.get("salary_min")),
             _safe_float(row.get("salary_max")),
             str(row.get("source_hash", ""))[:64],

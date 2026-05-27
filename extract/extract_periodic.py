@@ -17,8 +17,8 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-PERIODIC_ROW_LIMIT = 100
-_MAX_LOCATIONS = 10
+PERIODIC_ROW_LIMIT = 200
+_MAX_LOCATIONS = 20
 
 COLUMN_RENAME = {
     "job_title": "title", "position": "title",
