@@ -19,16 +19,32 @@ def _is_sparse(values: np.ndarray, threshold: float = 0.60) -> bool:
     return (np.sum(values == 0) / len(values)) > threshold
 
 
+def _compute_trend_score(values: np.ndarray, window: int = 4) -> float:
+    if len(values) < window * 2:
+        if len(values) < 2:
+            return 0.0
+        half = len(values) // 2
+        recent = float(np.mean(values[half:]))
+        prior = float(np.mean(values[:half]))
+        baseline = max(prior, 0.1)
+        return round((recent - prior) / baseline, 4)
+    recent = float(np.mean(values[-window:]))
+    prior = float(np.mean(values[-window * 2:-window]))
+    baseline = max(prior, 0.1)
+    return round((recent - prior) / baseline, 4)
+
+
 def _exp_smoothing(values: np.ndarray, horizon: int) -> dict:
     try:
         if len(values) < 2:
             avg = float(np.mean(values))
             preds = np.full(horizon, max(avg, 0))
-            return {"predictions": preds, "lower": preds.copy(), "upper": preds.copy(), "model": "mean"}
+            std = 0.0
+            return {"predictions": preds, "lower": np.maximum(preds - 1.96 * std, 0), "upper": preds + 1.96 * std, "model": "mean"}
         from statsmodels.tsa.holtwinters import SimpleExpSmoothing
         fit = SimpleExpSmoothing(values).fit(optimized=True)
         preds = np.maximum(fit.forecast(horizon), 0)
-        std = float(np.std(values)) if len(values) > 1 else 0.0
+        std = float(np.std(values[-min(len(values), 8):]))
         return {
             "predictions": preds,
             "lower": np.maximum(preds - 1.96 * std, 0),
@@ -38,8 +54,9 @@ def _exp_smoothing(values: np.ndarray, horizon: int) -> dict:
     except Exception as e:
         logger.warning(f"Exp smoothing failed: {e}. Falling back to mean.")
         avg = float(np.mean(values))
+        std = float(np.std(values)) if len(values) > 1 else 0.0
         preds = np.full(horizon, max(avg, 0))
-        return {"predictions": preds, "lower": preds.copy(), "upper": preds.copy(), "model": "mean"}
+        return {"predictions": preds, "lower": np.maximum(preds - 1.96 * std, 0), "upper": preds + 1.96 * std, "model": "mean"}
 
 
 def _croston(values: np.ndarray, horizon: int) -> dict:
@@ -59,9 +76,9 @@ def _croston(values: np.ndarray, horizon: int) -> dict:
         p = alpha * interval + (1 - alpha) * p
     forecast_val = max(z / p if p > 0 else 0.0, 0.0)
     nz_vals = values[non_zero_idx]
-    std = float(np.std(nz_vals)) if len(nz_vals) > 1 else 0.0
+    std = float(np.std(nz_vals)) if len(nz_vals) > 1 else float(forecast_val * 0.3)
     preds = np.full(horizon, forecast_val)
-    return {"predictions": preds, "lower": np.maximum(preds - 1.96*std, 0), "upper": preds + 1.96*std, "model": "croston"}
+    return {"predictions": preds, "lower": np.maximum(preds - 1.96 * std, 0), "upper": preds + 1.96 * std, "model": "croston"}
 
 
 def _holt_winters(values: np.ndarray, horizon: int) -> dict:
@@ -131,7 +148,7 @@ def _get_weekly_skill_data(engine) -> pd.DataFrame:
         SELECT
             week_label, year, week,
             skill_name, skill_domain,
-            job_category, global_region,
+            job_category, country,
             posting_count
         FROM mv_weekly_skill_demand
         ORDER BY year, week;
@@ -167,7 +184,10 @@ def run_forecasting(engine=None, horizon: int = None):
         logger.warning("No data in mv_weekly_skill_demand. Skipping forecasting.")
         return
 
-    group_cols = ["skill_name", "job_category", "global_region"]
+    df = df[df["country"] != "Unknown"].copy()
+    df = df[df["job_category"] != "Other"].copy()
+
+    group_cols = ["skill_name", "job_category", "country"]
     groups = df.groupby(group_cols)
     total = len(groups)
     logger.warning(f"Forecasting {total} combinations, horizon={horizon} weeks, min_history={FORECAST_MIN_HISTORY_WEEKS} week(s)")
@@ -182,6 +202,8 @@ def run_forecasting(engine=None, horizon: int = None):
         if result is None:
             skipped += 1
             continue
+        values = series.values.astype(float)
+        trend_score = _compute_trend_score(values)
         last_year = int(grp_sorted.iloc[-1]["year"])
         last_week = int(grp_sorted.iloc[-1]["week"])
         future_labels = _get_future_week_labels(last_year, last_week, horizon)
@@ -189,13 +211,14 @@ def run_forecasting(engine=None, horizon: int = None):
             results.append({
                 "skill_name": key[0],
                 "job_category": key[1],
-                "global_region": key[2],
+                "country": key[2],
                 "forecast_week_label": wk_label,
                 "forecast_year": yr,
                 "forecast_week": wk,
                 "predicted_count": float(result["predictions"][j]),
                 "lower_bound": float(result["lower"][j]),
                 "upper_bound": float(result["upper"][j]),
+                "trend_score": trend_score,
                 "model_name": result["model"],
             })
         if (i + 1) % 50 == 0:
@@ -222,13 +245,14 @@ def run_forecasting(engine=None, horizon: int = None):
         rows.append((
             int(skill_id),
             row["job_category"],
-            row["global_region"],
+            row["country"],
             row["forecast_week_label"],
             int(row["forecast_year"]),
             int(row["forecast_week"]),
             float(row["predicted_count"]),
             float(row["lower_bound"]),
             float(row["upper_bound"]),
+            float(row["trend_score"]),
             row["model_name"],
         ))
 
@@ -244,15 +268,16 @@ def run_forecasting(engine=None, horizon: int = None):
             cur,
             """
             INSERT INTO forecast_skill_demand
-                (skill_id, job_category, global_region, forecast_week_label,
+                (skill_id, job_category, country, forecast_week_label,
                  forecast_year, forecast_week, predicted_count, lower_bound,
-                 upper_bound, model_name)
+                 upper_bound, trend_score, model_name)
             VALUES %s
-            ON CONFLICT (skill_id, job_category, global_region, forecast_week_label)
+            ON CONFLICT (skill_id, job_category, country, forecast_week_label)
             DO UPDATE SET
                 predicted_count = EXCLUDED.predicted_count,
                 lower_bound     = EXCLUDED.lower_bound,
                 upper_bound     = EXCLUDED.upper_bound,
+                trend_score     = EXCLUDED.trend_score,
                 model_name      = EXCLUDED.model_name,
                 generated_at    = NOW();
             """,

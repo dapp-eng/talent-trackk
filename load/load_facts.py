@@ -29,18 +29,13 @@ def _safe_int(val) -> int:
 
 def _resolve_location_id(row: pd.Series, location_map: dict):
     city = str(row.get("loc_city", "") or "")
-    province = str(row.get("loc_province", "") or "")
     country = str(row.get("loc_country", "") or "Unknown")
-    region = str(row.get("global_region", "") or "Other")
 
-    key = (city, province, country, region)
+    key = (city, country)
     if key in location_map:
         return location_map[key]
     for k, v in location_map.items():
-        if k[2] == country and k[3] == region:
-            return v
-    for k, v in location_map.items():
-        if k[3] == region:
+        if k[1] == country:
             return v
     return None
 
@@ -70,8 +65,8 @@ def load_fact_job_posting(
         level = str(row.get("job_level",     "Unknown"))
         cat = str(row.get("job_category",  "Other"))
         position_id = position_map.get((title, level, cat))
-        platform = str(row.get("platform_norm", "Unknown")).strip() or "Unknown"
-        platform_id = platform_map.get(platform, platform_map.get("Unknown"))
+        platform = str(row.get("platform_norm", "LinkedIn")).strip() or "LinkedIn"
+        platform_id = platform_map.get(platform, platform_map.get("LinkedIn"))
 
         posting_date = row.get("date_parsed")
         if pd.notna(posting_date):
@@ -146,11 +141,8 @@ def load_bridge_job_skill(
     source_hash_to_job_id: dict,
     skill_id_map: dict,
 ):
-    mask = entities_df["entity_type"].str.contains("Knowledge|Skill", case=False, na=False)
-    df = entities_df[mask]
-
     rows = []
-    for _, row in df.iterrows():
+    for _, row in entities_df.iterrows():
         job_id = source_hash_to_job_id.get(str(row["source_hash"]))
         skill_id = skill_id_map.get(str(row["entity_text"]))
         if job_id is None or skill_id is None:
@@ -177,93 +169,6 @@ def load_bridge_job_skill(
         )
         conn.commit()
         logger.warning(f"load_bridge_job_skill: {len(rows)} rows inserted")
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-
-def load_bridge_job_entity(
-    entities_df: pd.DataFrame,
-    source_hash_to_job_id: dict,
-    entity_id_map: dict,
-):
-    rows = []
-    for _, row in entities_df.iterrows():
-        job_id = source_hash_to_job_id.get(str(row["source_hash"]))
-        entity_id = entity_id_map.get((str(row["entity_text"]), str(row["entity_type"])))
-        if job_id is None or entity_id is None:
-            continue
-        confidence = _safe_float(row.get("extraction_confidence", 0.0)) or 0.0
-        rows.append((int(job_id), int(entity_id), round(confidence, 4)))
-
-    if not rows:
-        logger.warning("load_bridge_job_entity: no rows to insert")
-        return
-
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
-        psycopg2.extras.execute_values(
-            cur,
-            """
-            INSERT INTO bridge_job_entity (job_id, entity_id, extraction_confidence)
-            VALUES %s
-            ON CONFLICT (job_id, entity_id) DO NOTHING;
-            """,
-            rows,
-            page_size=1000,
-        )
-        conn.commit()
-        logger.warning(f"load_bridge_job_entity: {len(rows)} rows inserted")
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-
-def load_embeddings(
-    df: pd.DataFrame,
-    source_hash_to_job_id: dict,
-    jobbert_array: np.ndarray,
-    sbert_array: np.ndarray,
-):
-    if jobbert_array.shape[0] == 0:
-        logger.warning("load_embeddings: empty arrays, skipping")
-        return
-
-    hashes = df["source_hash"].astype(str).values
-    rows = []
-    for i, h in enumerate(hashes):
-        job_id = source_hash_to_job_id.get(h)
-        if job_id is None:
-            continue
-        rows.append((int(job_id), jobbert_array[i].tolist(), sbert_array[i].tolist()))
-
-    if not rows:
-        logger.warning("load_embeddings: no matching job_ids found")
-        return
-
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
-        psycopg2.extras.execute_values(
-            cur,
-            """
-            INSERT INTO job_embeddings (job_id, jobbert_vector, sbert_vector)
-            VALUES %s
-            ON CONFLICT (job_id) DO UPDATE
-                SET jobbert_vector = EXCLUDED.jobbert_vector,
-                    sbert_vector = EXCLUDED.sbert_vector;
-            """,
-            rows,
-            template="(%s, %s::vector, %s::vector)",
-            page_size=200,
-        )
-        conn.commit()
-        logger.warning(f"load_embeddings: {len(rows)} rows inserted/updated")
     except Exception:
         conn.rollback()
         raise

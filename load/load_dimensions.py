@@ -36,33 +36,26 @@ def upsert_dim_time(dates: pd.Series) -> dict:
 
 
 def upsert_dim_location(df: pd.DataFrame) -> dict:
-    loc_cols = ["loc_city", "loc_province", "loc_country", "global_region"]
+    loc_cols = ["loc_city", "loc_country"]
     rows = df[loc_cols].drop_duplicates().fillna("").replace("nan", "")
     conn = get_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         for _, row in rows.iterrows():
             city = row["loc_city"] or None
-            province = row["loc_province"] or None
             country = row["loc_country"] or "Unknown"
-            region = row["global_region"] or "Other"
             cur.execute("""
-                INSERT INTO dim_location (city, province_state, country, global_region)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (city, province_state, country, global_region) DO NOTHING;
-            """, (city, province, country, region))
+                INSERT INTO dim_location (city, country)
+                VALUES (%s, %s)
+                ON CONFLICT (city, country) DO NOTHING;
+            """, (city, country))
         conn.commit()
-        cur.execute("""
-            SELECT location_id, city, province_state, country, global_region
-            FROM dim_location;
-        """)
+        cur.execute("SELECT location_id, city, country FROM dim_location;")
         mapping = {}
         for r in cur.fetchall():
             key = (
                 r["city"] or "",
-                r["province_state"] or "",
                 r["country"] or "Unknown",
-                r["global_region"] or "Other",
             )
             mapping[key] = r["location_id"]
     finally:
@@ -126,7 +119,7 @@ def upsert_dim_platform(platforms: list) -> dict:
     conn = get_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        for p in set(str(x).strip() or "Unknown" for x in platforms):
+        for p in set(str(x).strip() or "LinkedIn" for x in platforms):
             cur.execute("""
                 INSERT INTO dim_platform (platform_name)
                 VALUES (%s)
@@ -145,9 +138,8 @@ def upsert_dim_skill(entities_df: pd.DataFrame) -> dict:
     if entities_df.empty:
         return {}
 
-    mask   = entities_df["entity_type"].str.contains("Knowledge|Skill", case=False, na=False)
     skills = (
-        entities_df[mask][["entity_text", "entity_type", "source_model"]]
+        entities_df[["entity_text", "entity_type", "source_model"]]
         .drop_duplicates("entity_text")
         .rename(columns={"entity_text": "skill_name", "entity_type": "skill_type", "source_model": "skill_domain"})
     )
@@ -169,34 +161,4 @@ def upsert_dim_skill(entities_df: pd.DataFrame) -> dict:
     finally:
         conn.close()
     logger.warning(f"dim_skill: {len(mapping)} skills total")
-    return mapping
-
-
-def upsert_dim_entity(entities_df: pd.DataFrame) -> dict:
-    if entities_df.empty:
-        return {}
-
-    uniq = entities_df[["entity_text", "entity_type", "source_model"]].drop_duplicates(
-        subset=["entity_text", "entity_type"]
-    )
-
-    conn = get_connection()
-    try:
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        for _, row in uniq.iterrows():
-            cur.execute("""
-                INSERT INTO dim_entity (entity_text, entity_type, source_model)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (entity_text, entity_type) DO UPDATE
-                    SET source_model = EXCLUDED.source_model;
-            """, (row["entity_text"], row["entity_type"], row["source_model"]))
-        conn.commit()
-        cur.execute("SELECT entity_id, entity_text, entity_type FROM dim_entity;")
-        mapping = {
-            (r["entity_text"], r["entity_type"]): r["entity_id"]
-            for r in cur.fetchall()
-        }
-    finally:
-        conn.close()
-    logger.warning(f"dim_entity: {len(mapping)} entities total")
     return mapping

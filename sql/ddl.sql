@@ -20,20 +20,15 @@ CREATE INDEX IF NOT EXISTS idx_dim_time_week_label ON dim_time (week_label);
 CREATE TABLE IF NOT EXISTS dim_location (
     location_id SERIAL PRIMARY KEY,
     city TEXT,
-    province_state TEXT,
     country TEXT NOT NULL DEFAULT 'Unknown',
-    global_region TEXT NOT NULL DEFAULT 'Other',
-    UNIQUE (city, province_state, country, global_region)
+    UNIQUE (city, country)
 );
 
 CREATE INDEX IF NOT EXISTS idx_dim_location_country ON dim_location (country);
-CREATE INDEX IF NOT EXISTS idx_dim_location_region  ON dim_location (global_region);
 
 CREATE TABLE IF NOT EXISTS dim_company (
     company_id SERIAL PRIMARY KEY,
-    company_name TEXT NOT NULL UNIQUE,
-    industry_sector TEXT,
-    company_size_category TEXT
+    company_name TEXT NOT NULL UNIQUE
 );
 
 CREATE INDEX IF NOT EXISTS idx_dim_company_name ON dim_company USING gin (company_name gin_trgm_ops);
@@ -51,8 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_dim_position_level    ON dim_position (job_level)
 
 CREATE TABLE IF NOT EXISTS dim_platform (
     platform_id SERIAL PRIMARY KEY,
-    platform_name TEXT NOT NULL UNIQUE,
-    regional_focus TEXT
+    platform_name TEXT NOT NULL UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS dim_skill (
@@ -64,17 +58,6 @@ CREATE TABLE IF NOT EXISTS dim_skill (
 
 CREATE INDEX IF NOT EXISTS idx_dim_skill_type   ON dim_skill (skill_type);
 CREATE INDEX IF NOT EXISTS idx_dim_skill_domain ON dim_skill (skill_domain);
-
-CREATE TABLE IF NOT EXISTS dim_entity (
-    entity_id   SERIAL PRIMARY KEY,
-    entity_text TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    source_model TEXT,
-    UNIQUE (entity_text, entity_type)
-);
-
-CREATE INDEX IF NOT EXISTS idx_dim_entity_type  ON dim_entity (entity_type);
-CREATE INDEX IF NOT EXISTS idx_dim_entity_text  ON dim_entity USING gin (entity_text gin_trgm_ops);
 
 CREATE TABLE IF NOT EXISTS fact_job_posting (
     job_id BIGSERIAL,
@@ -97,11 +80,11 @@ CREATE TABLE IF NOT EXISTS fact_job_posting (
 
 CREATE TABLE IF NOT EXISTS fact_job_posting_default PARTITION OF fact_job_posting DEFAULT;
 
-CREATE INDEX IF NOT EXISTS idx_fact_time ON fact_job_posting (time_id);
-CREATE INDEX IF NOT EXISTS idx_fact_location ON fact_job_posting (location_id);
-CREATE INDEX IF NOT EXISTS idx_fact_company ON fact_job_posting (company_id);
-CREATE INDEX IF NOT EXISTS idx_fact_position ON fact_job_posting (position_id);
-CREATE INDEX IF NOT EXISTS idx_fact_platform ON fact_job_posting (platform_id);
+CREATE INDEX IF NOT EXISTS idx_fact_time        ON fact_job_posting (time_id);
+CREATE INDEX IF NOT EXISTS idx_fact_location    ON fact_job_posting (location_id);
+CREATE INDEX IF NOT EXISTS idx_fact_company     ON fact_job_posting (company_id);
+CREATE INDEX IF NOT EXISTS idx_fact_position    ON fact_job_posting (position_id);
+CREATE INDEX IF NOT EXISTS idx_fact_platform    ON fact_job_posting (platform_id);
 CREATE INDEX IF NOT EXISTS idx_fact_source_hash ON fact_job_posting (source_hash);
 
 CREATE TABLE IF NOT EXISTS bridge_job_skill (
@@ -114,34 +97,26 @@ CREATE TABLE IF NOT EXISTS bridge_job_skill (
 CREATE INDEX IF NOT EXISTS idx_bridge_skill ON bridge_job_skill (skill_id);
 CREATE INDEX IF NOT EXISTS idx_bridge_job   ON bridge_job_skill (job_id);
 
-CREATE TABLE IF NOT EXISTS bridge_job_entity (
-    job_id BIGINT NOT NULL,
-    entity_id INT NOT NULL REFERENCES dim_entity(entity_id),
-    extraction_confidence NUMERIC(5,4) DEFAULT 0.0,
-    PRIMARY KEY (job_id, entity_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_bridge_entity_entity ON bridge_job_entity (entity_id);
-CREATE INDEX IF NOT EXISTS idx_bridge_entity_job    ON bridge_job_entity (job_id);
-
 CREATE TABLE IF NOT EXISTS forecast_skill_demand (
     forecast_id BIGSERIAL PRIMARY KEY,
     skill_id INT REFERENCES dim_skill(skill_id),
     job_category TEXT,
-    global_region TEXT,
+    country TEXT,
     forecast_week_label TEXT NOT NULL,
     forecast_year INT NOT NULL,
     forecast_week INT NOT NULL,
     predicted_count NUMERIC(12,4),
     lower_bound NUMERIC(12,4),
     upper_bound NUMERIC(12,4),
+    trend_score NUMERIC(12,4),
     model_name TEXT,
     generated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (skill_id, job_category, global_region, forecast_week_label)
+    UNIQUE (skill_id, job_category, country, forecast_week_label)
 );
 
-CREATE INDEX IF NOT EXISTS idx_forecast_skill ON forecast_skill_demand (skill_id);
-CREATE INDEX IF NOT EXISTS idx_forecast_week  ON forecast_skill_demand (forecast_week_label);
+CREATE INDEX IF NOT EXISTS idx_forecast_skill   ON forecast_skill_demand (skill_id);
+CREATE INDEX IF NOT EXISTS idx_forecast_week    ON forecast_skill_demand (forecast_week_label);
+CREATE INDEX IF NOT EXISTS idx_forecast_country ON forecast_skill_demand (country);
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_weekly_skill_demand AS
 SELECT
@@ -152,7 +127,6 @@ SELECT
     ds.skill_type,
     ds.skill_domain,
     dp.job_category,
-    dl.global_region,
     dl.country,
     COUNT(DISTINCT f.job_id) AS posting_count,
     AVG(f.salary_min) AS avg_salary_min,
@@ -165,37 +139,11 @@ JOIN dim_position dp ON f.position_id = dp.position_id
 JOIN dim_location dl ON f.location_id = dl.location_id
 GROUP BY dt.year, dt.week, dt.week_label,
          ds.skill_name, ds.skill_type, ds.skill_domain,
-         dp.job_category, dl.global_region, dl.country
+         dp.job_category, dl.country
 WITH DATA;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_weekly_skill
     ON mv_weekly_skill_demand (week_label, skill_name, job_category, country);
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS mv_weekly_entity_demand AS
-SELECT
-    dt.year,
-    dt.week,
-    dt.week_label,
-    de.entity_text,
-    de.entity_type,
-    de.source_model,
-    dp.job_category,
-    dl.global_region,
-    dl.country,
-    COUNT(DISTINCT f.job_id) AS posting_count
-FROM fact_job_posting f
-JOIN bridge_job_entity be ON f.job_id = be.job_id
-JOIN dim_entity de ON be.entity_id = de.entity_id
-JOIN dim_time dt ON f.time_id = dt.time_id
-JOIN dim_position dp ON f.position_id = dp.position_id
-JOIN dim_location dl ON f.location_id = dl.location_id
-GROUP BY dt.year, dt.week, dt.week_label,
-         de.entity_text, de.entity_type, de.source_model,
-         dp.job_category, dl.global_region, dl.country
-WITH DATA;
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_weekly_entity
-    ON mv_weekly_entity_demand (week_label, entity_text, entity_type, job_category, country);
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_platform_monthly AS
 SELECT
@@ -203,7 +151,7 @@ SELECT
     dt.month,
     dpl.platform_name,
     dp.job_category,
-    dl.global_region,
+    dl.country,
     COUNT(DISTINCT f.job_id) AS posting_count,
     SUM(CASE WHEN f.is_remote THEN 1 ELSE 0 END) AS remote_count,
     SUM(CASE WHEN f.has_salary THEN 1 ELSE 0 END) AS with_salary_count
@@ -212,29 +160,26 @@ JOIN dim_time dt ON f.time_id = dt.time_id
 JOIN dim_platform dpl ON f.platform_id = dpl.platform_id
 JOIN dim_position dp ON f.position_id = dp.position_id
 JOIN dim_location dl ON f.location_id = dl.location_id
-GROUP BY dt.year, dt.month, dpl.platform_name, dp.job_category, dl.global_region
+GROUP BY dt.year, dt.month, dpl.platform_name, dp.job_category, dl.country
 WITH DATA;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_platform_monthly
-    ON mv_platform_monthly (year, month, platform_name, job_category, global_region);
+    ON mv_platform_monthly (year, month, platform_name, job_category, country);
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_company_hiring AS
 SELECT
     dc.company_name,
-    dc.industry_sector,
-    dc.company_size_category,
     dt.year,
     dt.quarter,
-    dl.global_region,
+    dl.country,
     COUNT(DISTINCT f.job_id) AS total_postings,
     AVG(f.salary_max) AS avg_salary_max
 FROM fact_job_posting f
 JOIN dim_company dc ON f.company_id = dc.company_id
 JOIN dim_time dt ON f.time_id = dt.time_id
 JOIN dim_location dl ON f.location_id = dl.location_id
-GROUP BY dc.company_name, dc.industry_sector, dc.company_size_category,
-         dt.year, dt.quarter, dl.global_region
+GROUP BY dc.company_name, dt.year, dt.quarter, dl.country
 WITH DATA;
 
-CREATE INDEX IF NOT EXISTS idx_mv_company_sector
-    ON mv_company_hiring (industry_sector, year, quarter);
+CREATE INDEX IF NOT EXISTS idx_mv_company_hiring
+    ON mv_company_hiring (company_name, year, quarter);

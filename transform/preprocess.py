@@ -102,85 +102,377 @@ def detect_language(text: str) -> str:
     return best_lang
 
 
-REGION_MAP = {
-    "usa": "North America", "united states": "North America",
-    "us": "North America", "america": "North America",
-    "canada": "North America", "mexico": "North America",
-    "méxico": "North America",
-
-    "united kingdom": "Europe", "uk": "Europe", "england": "Europe",
-    "germany": "Europe", "deutschland": "Europe", "allemagne": "Europe",
-    "france": "Europe", "frankrijk": "Europe", "frankreich": "Europe",
-    "netherlands": "Europe", "nederland": "Europe", "pays-bas": "Europe",
-    "spain": "Europe", "españa": "Europe", "espagne": "Europe",
-    "italy": "Europe", "italia": "Europe", "italie": "Europe",
-    "sweden": "Europe", "sverige": "Europe", "suède": "Europe",
-    "norway": "Europe", "norge": "Europe", "norvège": "Europe",
-    "denmark": "Europe", "danmark": "Europe", "danemark": "Europe",
-    "finland": "Europe", "suomi": "Europe", "finlande": "Europe",
-    "switzerland": "Europe", "schweiz": "Europe", "suisse": "Europe",
-    "austria": "Europe", "österreich": "Europe", "autriche": "Europe",
-    "belgium": "Europe", "belgique": "Europe", "belgië": "Europe",
-    "portugal": "Europe",
-    "ireland": "Europe", "irlande": "Europe", "irland": "Europe",
-    "poland": "Europe", "polska": "Europe", "pologne": "Europe",
-    "czech": "Europe", "tschechien": "Europe", "tchéquie": "Europe",
-    "romania": "Europe", "românia": "Europe", "roumanie": "Europe",
-    "ukraine": "Europe", "україна": "Europe",
-    "hungary": "Europe", "magyarország": "Europe", "hongrie": "Europe",
-    "greece": "Europe", "ελλάδα": "Europe", "grèce": "Europe",
-
-    "singapore": "Southeast Asia", "singapour": "Southeast Asia",
-    "indonesia": "Southeast Asia", "indonésie": "Southeast Asia",
-    "malaysia": "Southeast Asia", "malaisie": "Southeast Asia",
-    "vietnam": "Southeast Asia", "viêt nam": "Southeast Asia",
-    "thailand": "Southeast Asia", "thaïlande": "Southeast Asia",
-    "philippines": "Southeast Asia",
-    "myanmar": "Southeast Asia", "birmanie": "Southeast Asia",
-    "cambodia": "Southeast Asia", "cambodge": "Southeast Asia",
-
-    "india": "South Asia", "inde": "South Asia", "indien": "South Asia",
-    "pakistan": "South Asia",
-    "bangladesh": "South Asia",
-    "sri lanka": "South Asia",
-
-    "australia": "Oceania", "australie": "Oceania", "australien": "Oceania",
-    "new zealand": "Oceania", "nouvelle-zélande": "Oceania",
-
-    "china": "East Asia", "chine": "East Asia", "china vr": "East Asia",
-    "japan": "East Asia", "japon": "East Asia",
-    "south korea": "East Asia", "corée du sud": "East Asia", "südkorea": "East Asia",
-    "taiwan": "East Asia",
-    "hong kong": "East Asia",
-
-    "brazil": "South America", "brasil": "South America", "brésil": "South America",
-    "argentina": "South America", "argentine": "South America",
-    "colombia": "South America", "colombie": "South America",
-    "chile": "South America", "chili": "South America",
-    "peru": "South America", "pérou": "South America",
-    "ecuador": "South America", "équateur": "South America",
-    "costa rica": "South America",
-
-    "south africa": "Africa", "afrique du sud": "Africa", "südafrika": "Africa",
-    "nigeria": "Africa", "nigéria": "Africa",
-    "kenya": "Africa",
-    "egypt": "Africa", "égypte": "Africa", "ägypten": "Africa",
-    "ghana": "Africa",
-    "ethiopia": "Africa", "éthiopie": "Africa",
-
-    "uae": "Middle East", "dubai": "Middle East",
-    "united arab emirates": "Middle East", "émirats arabes unis": "Middle East",
-    "saudi arabia": "Middle East", "arabie saoudite": "Middle East",
-    "israel": "Middle East", "israël": "Middle East",
-    "turkey": "Middle East", "türkiye": "Middle East",
-    "jordan": "Middle East", "jordanie": "Middle East",
-
-    "remote": "Remote/Global", "worldwide": "Remote/Global",
-    "global": "Remote/Global", "anywhere": "Remote/Global",
-    "partout": "Remote/Global", "weltweit": "Remote/Global",
+_US_STATE_ABBR = {
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+    "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+    "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+    "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+    "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+    "DC",
 }
 
-REGION_MAP_SORTED = sorted(REGION_MAP.items(), key=lambda x: len(x[0]), reverse=True)
+_COUNTRY_ALIASES: dict[str, str] = {
+    "us": "United States",
+    "usa": "United States",
+    "u.s.": "United States",
+    "u.s.a.": "United States",
+    "united states of america": "United States",
+    "america": "United States",
+    "uk": "United Kingdom",
+    "u.k.": "United Kingdom",
+    "great britain": "United Kingdom",
+    "england": "United Kingdom",
+    "britain": "United Kingdom",
+    "uae": "United Arab Emirates",
+    "u.a.e.": "United Arab Emirates",
+    "dubai": "United Arab Emirates",
+    "abu dhabi": "United Arab Emirates",
+    "south korea": "South Korea",
+    "korea": "South Korea",
+    "republic of korea": "South Korea",
+    "drc": "DR Congo",
+    "congo": "DR Congo",
+    "czech republic": "Czech Republic",
+    "czechia": "Czech Republic",
+    "new zealand": "New Zealand",
+    "aotearoa": "New Zealand",
+    "south africa": "South Africa",
+    "saudi arabia": "Saudi Arabia",
+    "ksa": "Saudi Arabia",
+    "hong kong": "Hong Kong",
+    "hk": "Hong Kong",
+    "costa rica": "Costa Rica",
+    "sri lanka": "Sri Lanka",
+    "el salvador": "El Salvador",
+    "puerto rico": "Puerto Rico",
+    "dominican republic": "Dominican Republic",
+    "trinidad": "Trinidad and Tobago",
+    "trinidad and tobago": "Trinidad and Tobago",
+    "deutschland": "Germany",
+    "allemagne": "Germany",
+    "france": "France",
+    "frankreich": "France",
+    "frankrijk": "France",
+    "españa": "Spain",
+    "espagne": "Spain",
+    "spain": "Spain",
+    "italia": "Italy",
+    "italie": "Italy",
+    "italy": "Italy",
+    "nederland": "Netherlands",
+    "netherlands": "Netherlands",
+    "pays-bas": "Netherlands",
+    "sverige": "Sweden",
+    "suède": "Sweden",
+    "sweden": "Sweden",
+    "norge": "Norway",
+    "norvège": "Norway",
+    "norway": "Norway",
+    "danmark": "Denmark",
+    "danemark": "Denmark",
+    "denmark": "Denmark",
+    "suomi": "Finland",
+    "finlande": "Finland",
+    "finland": "Finland",
+    "schweiz": "Switzerland",
+    "suisse": "Switzerland",
+    "switzerland": "Switzerland",
+    "österreich": "Austria",
+    "autriche": "Austria",
+    "austria": "Austria",
+    "belgique": "Belgium",
+    "belgië": "Belgium",
+    "belgium": "Belgium",
+    "polska": "Poland",
+    "pologne": "Poland",
+    "poland": "Poland",
+    "românia": "Romania",
+    "roumanie": "Romania",
+    "romania": "Romania",
+    "україна": "Ukraine",
+    "ukraine": "Ukraine",
+    "magyarország": "Hungary",
+    "hongrie": "Hungary",
+    "hungary": "Hungary",
+    "ελλάδα": "Greece",
+    "grèce": "Greece",
+    "greece": "Greece",
+    "türkiye": "Turkey",
+    "turkey": "Turkey",
+    "turquie": "Turkey",
+    "brasil": "Brazil",
+    "brésil": "Brazil",
+    "brazil": "Brazil",
+    "argentina": "Argentina",
+    "argentine": "Argentina",
+    "colombia": "Colombia",
+    "colombie": "Colombia",
+    "chile": "Chile",
+    "chili": "Chile",
+    "peru": "Peru",
+    "pérou": "Peru",
+    "équateur": "Ecuador",
+    "ecuador": "Ecuador",
+    "afrique du sud": "South Africa",
+    "südafrika": "South Africa",
+    "nigéria": "Nigeria",
+    "nigeria": "Nigeria",
+    "égypte": "Egypt",
+    "ägypten": "Egypt",
+    "egypt": "Egypt",
+    "éthiopie": "Ethiopia",
+    "ethiopia": "Ethiopia",
+    "arabie saoudite": "Saudi Arabia",
+    "émirats arabes unis": "United Arab Emirates",
+    "israël": "Israel",
+    "israel": "Israel",
+    "jordanie": "Jordan",
+    "jordan": "Jordan",
+    "singapour": "Singapore",
+    "singapore": "Singapore",
+    "indonésie": "Indonesia",
+    "indonesia": "Indonesia",
+    "malaisie": "Malaysia",
+    "malaysia": "Malaysia",
+    "viêt nam": "Vietnam",
+    "vietnam": "Vietnam",
+    "thaïlande": "Thailand",
+    "thailand": "Thailand",
+    "birmanie": "Myanmar",
+    "myanmar": "Myanmar",
+    "cambodge": "Cambodia",
+    "cambodia": "Cambodia",
+    "inde": "India",
+    "indien": "India",
+    "india": "India",
+    "australie": "Australia",
+    "australien": "Australia",
+    "australia": "Australia",
+    "nouvelle-zélande": "New Zealand",
+    "chine": "China",
+    "china vr": "China",
+    "china": "China",
+    "japon": "Japan",
+    "japan": "Japan",
+    "corée du sud": "South Korea",
+    "südkorea": "South Korea",
+    "taiwan": "Taiwan",
+    "pakistan": "Pakistan",
+    "bangladesh": "Bangladesh",
+    "canada": "Canada",
+    "mexico": "Mexico",
+    "méxico": "Mexico",
+    "mexique": "Mexico",
+    "portugal": "Portugal",
+    "ireland": "Ireland",
+    "irlande": "Ireland",
+    "irland": "Ireland",
+    "kenya": "Kenya",
+    "ghana": "Ghana",
+    "philippines": "Philippines",
+    "remote": "Remote",
+    "worldwide": "Remote",
+    "global": "Remote",
+    "anywhere": "Remote",
+    "partout": "Remote",
+    "weltweit": "Remote",
+}
+
+_METRO_AREA_COUNTRY: list[tuple[str, str]] = [
+    ("metropolitan area", "United States"),
+    ("metro area", "United States"),
+    ("greater", "United States"),
+    (" area", "United States"),
+]
+
+_US_CITIES: set[str] = {
+    "new york", "los angeles", "chicago", "houston", "phoenix", "philadelphia",
+    "san antonio", "san diego", "dallas", "san jose", "austin", "jacksonville",
+    "fort worth", "columbus", "charlotte", "san francisco", "indianapolis",
+    "seattle", "denver", "washington", "nashville", "oklahoma city", "el paso",
+    "boston", "portland", "las vegas", "memphis", "louisville", "baltimore",
+    "milwaukee", "albuquerque", "tucson", "fresno", "sacramento", "mesa",
+    "atlanta", "omaha", "colorado springs", "raleigh", "miami", "virginia beach",
+    "minneapolis", "tampa", "new orleans", "cleveland", "bakersfield", "aurora",
+    "anaheim", "honolulu", "corpus christi", "riverside", "lexington",
+    "stockton", "st. louis", "pittsburgh", "anchorage", "greensboro",
+    "lincoln", "plano", "orlando", "irvine", "newark", "durham",
+    "st. paul", "laredo", "norfolk", "madison", "chandler", "lubbock",
+    "scottsdale", "reno", "buffalo", "winston-salem", "gilbert",
+    "glendale", "north las vegas", "garland", "hialeah", "baton rouge",
+    "chesapeake", "irving", "fremont", "san bernardino", "boise",
+    "birmingham", "rochester", "richmond", "spokane", "des moines",
+    "montgomery", "modesto", "fayetteville", "tacoma", "shreveport",
+    "akron", "aurora", "yonkers", "glendale", "huntington beach",
+    "salt lake city", "amarillo", "huntsville", "grand rapids", "knoxville",
+    "worcester", "newport news", "moreno valley", "tempe", "fontana",
+    "garden grove", "brownsville", "oceanside", "providence", "santa clarita",
+    "fort lauderdale", "chattanooga", "elk grove", "clarksville", "cape coral",
+    "kansas city", "columbia", "hartford", "rockford", "little rock",
+    "oxnard", "tallahassee", "ontario", "sioux falls", "peoria",
+    "springfield", "eugene", "rancho cucamonga", "pembroke pines", "fort collins",
+}
+
+REGION_MAP: dict[str, str] = {
+    "United States": "North America",
+    "Canada": "North America",
+    "Mexico": "North America",
+    "Costa Rica": "North America",
+    "Panama": "North America",
+    "Guatemala": "North America",
+    "Honduras": "North America",
+    "Nicaragua": "North America",
+    "El Salvador": "North America",
+    "Belize": "North America",
+    "Jamaica": "North America",
+    "Cuba": "North America",
+    "Haiti": "North America",
+    "Dominican Republic": "North America",
+    "Puerto Rico": "North America",
+    "Bahamas": "North America",
+    "Trinidad and Tobago": "North America",
+
+    "Brazil": "South America",
+    "Argentina": "South America",
+    "Chile": "South America",
+    "Colombia": "South America",
+    "Peru": "South America",
+    "Ecuador": "South America",
+    "Uruguay": "South America",
+    "Paraguay": "South America",
+    "Bolivia": "South America",
+    "Venezuela": "South America",
+    "Guyana": "South America",
+    "Suriname": "South America",
+
+    "United Kingdom": "Europe",
+    "Ireland": "Europe",
+    "Germany": "Europe",
+    "France": "Europe",
+    "Spain": "Europe",
+    "Portugal": "Europe",
+    "Italy": "Europe",
+    "Netherlands": "Europe",
+    "Belgium": "Europe",
+    "Luxembourg": "Europe",
+    "Switzerland": "Europe",
+    "Austria": "Europe",
+    "Poland": "Europe",
+    "Czech Republic": "Europe",
+    "Slovakia": "Europe",
+    "Hungary": "Europe",
+    "Romania": "Europe",
+    "Bulgaria": "Europe",
+    "Greece": "Europe",
+    "Croatia": "Europe",
+    "Serbia": "Europe",
+    "Slovenia": "Europe",
+    "Bosnia and Herzegovina": "Europe",
+    "Montenegro": "Europe",
+    "North Macedonia": "Europe",
+    "Albania": "Europe",
+    "Ukraine": "Europe",
+    "Belarus": "Europe",
+    "Lithuania": "Europe",
+    "Latvia": "Europe",
+    "Estonia": "Europe",
+    "Sweden": "Europe",
+    "Norway": "Europe",
+    "Denmark": "Europe",
+    "Finland": "Europe",
+    "Iceland": "Europe",
+    "Moldova": "Europe",
+    "Malta": "Europe",
+    "Cyprus": "Europe",
+    "Turkey": "Europe",
+
+    "China": "East Asia",
+    "Japan": "East Asia",
+    "South Korea": "East Asia",
+    "North Korea": "East Asia",
+    "Taiwan": "East Asia",
+    "Hong Kong": "East Asia",
+    "Macau": "East Asia",
+    "Mongolia": "East Asia",
+
+    "Indonesia": "Southeast Asia",
+    "Malaysia": "Southeast Asia",
+    "Singapore": "Southeast Asia",
+    "Thailand": "Southeast Asia",
+    "Vietnam": "Southeast Asia",
+    "Philippines": "Southeast Asia",
+    "Myanmar": "Southeast Asia",
+    "Cambodia": "Southeast Asia",
+    "Laos": "Southeast Asia",
+    "Brunei": "Southeast Asia",
+    "Timor-Leste": "Southeast Asia",
+
+    "India": "South Asia",
+    "Pakistan": "South Asia",
+    "Bangladesh": "South Asia",
+    "Sri Lanka": "South Asia",
+    "Nepal": "South Asia",
+    "Bhutan": "South Asia",
+    "Maldives": "South Asia",
+    "Afghanistan": "South Asia",
+
+    "Kazakhstan": "Central Asia",
+    "Uzbekistan": "Central Asia",
+    "Turkmenistan": "Central Asia",
+    "Kyrgyzstan": "Central Asia",
+    "Tajikistan": "Central Asia",
+
+    "Saudi Arabia": "Middle East",
+    "United Arab Emirates": "Middle East",
+    "Qatar": "Middle East",
+    "Kuwait": "Middle East",
+    "Bahrain": "Middle East",
+    "Oman": "Middle East",
+    "Jordan": "Middle East",
+    "Israel": "Middle East",
+    "Lebanon": "Middle East",
+    "Iraq": "Middle East",
+    "Iran": "Middle East",
+    "Syria": "Middle East",
+    "Yemen": "Middle East",
+    "Palestine": "Middle East",
+
+    "South Africa": "Africa",
+    "Nigeria": "Africa",
+    "Kenya": "Africa",
+    "Egypt": "Africa",
+    "Morocco": "Africa",
+    "Algeria": "Africa",
+    "Tunisia": "Africa",
+    "Libya": "Africa",
+    "Ghana": "Africa",
+    "Ethiopia": "Africa",
+    "Tanzania": "Africa",
+    "Uganda": "Africa",
+    "Rwanda": "Africa",
+    "Senegal": "Africa",
+    "Ivory Coast": "Africa",
+    "Cameroon": "Africa",
+    "Zimbabwe": "Africa",
+    "Botswana": "Africa",
+    "Namibia": "Africa",
+    "Mozambique": "Africa",
+    "Sudan": "Africa",
+    "DR Congo": "Africa",
+    "Angola": "Africa",
+
+    "Australia": "Oceania",
+    "New Zealand": "Oceania",
+    "Papua New Guinea": "Oceania",
+    "Fiji": "Oceania",
+    "Samoa": "Oceania",
+    "Tonga": "Oceania",
+    "Vanuatu": "Oceania",
+
+    "Remote": "Remote/Global",
+    "Worldwide": "Remote/Global",
+    "Global": "Remote/Global",
+}
 
 JOB_LEVEL_KEYWORDS = {
     "Junior":  ["junior", "entry", "entry-level", "associate", "intern",
@@ -194,34 +486,334 @@ JOB_LEVEL_KEYWORDS = {
 }
 
 JOB_CATEGORY_KEYWORDS = {
-    "Data":             ["data scientist", "data analyst", "data engineer",
-                         "data architect", "analytics engineer", "bi analyst",
-                         "business intelligence", "data steward", "data modeler"],
-    "Machine Learning": ["machine learning", "ml engineer", "ai engineer",
-                         "deep learning", "nlp engineer", "computer vision",
-                         "artificial intelligence", "llm engineer"],
-    "Cloud":            ["cloud engineer", "cloud architect", "solutions architect",
-                         "platform engineer", "infrastructure engineer",
-                         "aws engineer", "gcp engineer", "azure engineer"],
-    "DevOps":           ["devops", "site reliability", "sre", "mlops",
-                         "platform engineer", "release engineer", "ci/cd"],
-    "FinTech":          ["fintech", "quant", "quantitative", "algorithmic",
-                         "financial engineer", "risk analyst", "trading"],
-    "Engineering":      ["software engineer", "backend", "frontend", "fullstack",
-                         "full stack", "full-stack", "mobile engineer",
-                         "ios", "android", "java developer", "python developer",
-                         "golang", "rust engineer", "scala", "kotlin",
-                         "react developer", "vue developer", "node developer",
-                         "game developer", "embedded engineer", "robotics"],
-    "Management":       ["manager", "director", "head of", "vp of",
-                         "chief", "engineering manager", "product manager",
-                         "project manager", "scrum master"],
-    "Design":           ["ux", "ui ", "designer", "product designer",
-                         "graphic designer", "visual designer"],
-    "Security":         ["cybersecurity", "security engineer", "network engineer",
-                         "penetration tester", "soc analyst", "information security"],
-    "Database":         ["database administrator", "dba", "sql developer",
-                         "etl developer", "data warehouse", "database engineer"],
+    "Data": [
+        "data scientist", "data analyst", "data engineer", "data architect",
+        "analytics engineer", "bi analyst", "business intelligence", "data steward",
+        "data modeler", "data specialist", "data manager", "data consultant",
+        "data quality", "data governance", "data ops", "dataops",
+        "analytics", "reporting analyst", "insights analyst",
+        "business analyst", "quantitative analyst", "decision scientist",
+        "data visualization", "power bi", "tableau developer",
+        "statistician", "research analyst", "operations analyst",
+    ],
+
+    "Machine Learning": [
+        "machine learning", "ml engineer", "ai engineer", "deep learning",
+        "nlp engineer", "computer vision", "artificial intelligence", "llm engineer",
+        "research scientist", "applied scientist", "ai researcher", "ml researcher",
+        "generative ai", "large language model", "reinforcement learning",
+        "recommendation", "mlops", "prompt engineer",
+        "ai architect", "foundation model", "rag engineer",
+        "ai consultant", "speech recognition", "ocr engineer",
+        "autonomous systems", "robot learning",
+    ],
+
+    "Cloud": [
+        "cloud engineer", "cloud architect", "solutions architect",
+        "platform engineer", "infrastructure engineer",
+        "aws engineer", "gcp engineer", "azure engineer",
+        "cloud developer", "cloud consultant", "cloud administrator",
+        "systems engineer", "systems administrator",
+        "cloud operations", "cloud security", "multi-cloud",
+        "virtualization", "vmware", "openstack",
+    ],
+
+    "DevOps": [
+        "devops", "site reliability", "sre", "platform engineer",
+        "release engineer", "ci/cd", "devsecops", "infrastructure as code",
+        "kubernetes", "docker", "build engineer",
+        "observability", "monitoring engineer", "automation engineer",
+        "terraform", "ansible", "jenkins", "gitops",
+        "container engineer",
+    ],
+
+    "FinTech": [
+        "fintech", "quant", "quantitative", "algorithmic",
+        "financial engineer", "risk analyst", "trading", "actuary",
+        "credit analyst", "fraud analyst", "risk engineer",
+        "investment analyst", "portfolio manager",
+        "treasury analyst", "compliance analyst",
+        "banking analyst", "wealth management",
+    ],
+
+    "Engineering": [
+        "software engineer", "software developer", "backend", "frontend",
+        "fullstack", "full stack", "full-stack", "mobile engineer",
+        "ios", "android", "java developer", "python developer",
+        "golang", "rust engineer", "scala", "kotlin",
+        "react developer", "vue developer", "node developer",
+        "game developer", "embedded engineer", "robotics",
+        "web developer", "application developer", "api developer",
+        "php developer", "ruby developer", "angular developer",
+        "net developer", ".net", "c++ developer", "c# developer",
+        "firmware engineer", "unity developer", "unreal developer",
+        "desktop developer", "qt developer", "systems programmer",
+        "software architect", "technical architect",
+    ],
+
+    "Management": [
+        "manager", "director", "head of", "vp of",
+        "chief", "engineering manager", "product manager",
+        "project manager", "scrum master", "program manager",
+        "delivery manager", "agile coach", "technical lead",
+        "team lead", "tech lead",
+        "cto", "ceo", "coo", "cio",
+        "product owner", "business manager",
+        "operations manager", "strategy manager",
+    ],
+
+    "Design": [
+        "ux", "ui ", "designer", "product designer",
+        "graphic designer", "visual designer", "interaction designer",
+        "ux researcher", "design researcher",
+        "motion designer", "3d designer", "illustrator",
+        "creative director", "brand designer",
+        "industrial designer", "game artist",
+        "ui/ux", "ux writer",
+    ],
+
+    "Security": [
+        "cybersecurity", "security engineer", "network engineer",
+        "penetration tester", "soc analyst", "information security",
+        "security analyst", "threat analyst", "vulnerability",
+        "incident response", "ethical hacker",
+        "red team", "blue team", "iam engineer",
+        "security consultant", "forensics",
+        "application security", "cloud security",
+    ],
+
+    "Database": [
+        "database administrator", "dba", "sql developer",
+        "etl developer", "data warehouse", "database engineer",
+        "database developer", "data pipeline",
+        "big data engineer", "hadoop", "spark engineer",
+        "snowflake", "bigquery", "postgresql",
+        "oracle dba", "mysql dba",
+    ],
+
+    "Networking": [
+        "network administrator", "network architect",
+        "network operations", "telecommunications",
+        "wireless engineer", "voip engineer",
+        "ccna", "ccnp", "network support",
+        "network specialist",
+    ],
+
+    "QA & Testing": [
+        "qa engineer", "test engineer", "software tester",
+        "automation tester", "sdet", "quality assurance",
+        "manual tester", "performance tester",
+        "test automation", "uat tester",
+    ],
+
+    "Product": [
+        "product owner", "associate product manager",
+        "growth product manager", "technical product manager",
+        "product operations", "product strategist",
+        "product analyst",
+    ],
+
+    "Marketing": [
+        "digital marketing", "seo", "sem", "content marketing",
+        "growth hacker", "performance marketing",
+        "marketing analyst", "brand manager",
+        "social media manager", "copywriter",
+        "email marketing", "affiliate marketing",
+        "community manager",
+    ],
+
+    "Sales": [
+        "sales executive", "account executive",
+        "business development", "sales manager",
+        "inside sales", "outside sales",
+        "sales representative", "account manager",
+        "customer success", "partnership manager",
+        "solution consultant", "pre sales",
+    ],
+
+    "Human Resources": [
+        "hr", "human resources", "recruiter",
+        "talent acquisition", "people operations",
+        "hr business partner", "compensation analyst",
+        "learning and development", "organizational development",
+        "technical recruiter",
+    ],
+
+    "Customer Support": [
+        "customer support", "customer service",
+        "technical support", "help desk",
+        "support engineer", "call center",
+        "client success", "service desk",
+    ],
+
+    "Operations": [
+        "operations analyst", "operations manager",
+        "business operations", "supply chain",
+        "logistics", "procurement",
+        "inventory analyst", "warehouse manager",
+        "process improvement",
+    ],
+
+    "Healthcare": [
+        "doctor", "nurse", "pharmacist",
+        "medical assistant", "healthcare analyst",
+        "clinical researcher", "radiologist",
+        "therapist", "surgeon",
+        "dentist", "public health",
+    ],
+
+    "Education": [
+        "teacher", "lecturer", "professor",
+        "curriculum developer", "instructional designer",
+        "academic advisor", "tutor",
+        "education consultant",
+    ],
+
+    "Legal": [
+        "lawyer", "attorney", "legal counsel",
+        "paralegal", "compliance officer",
+        "legal assistant", "corporate counsel",
+    ],
+
+    "Media & Communication": [
+        "journalist", "editor", "producer",
+        "videographer", "photographer",
+        "public relations", "communications specialist",
+        "news anchor", "podcast producer",
+    ],
+
+    "Creative": [
+        "animator", "video editor", "sound designer",
+        "music producer", "writer", "author",
+        "screenwriter", "creative strategist",
+    ],
+
+    "Science & Research": [
+        "scientist", "chemist", "physicist",
+        "biologist", "research assistant",
+        "lab technician", "research fellow",
+        "environmental scientist",
+    ],
+
+    "Manufacturing": [
+        "manufacturing engineer", "production engineer",
+        "quality control", "plant manager",
+        "mechanical engineer", "electrical engineer",
+        "industrial engineer", "process engineer",
+    ],
+
+    "Construction": [
+        "civil engineer", "architect",
+        "construction manager", "surveyor",
+        "urban planner", "site engineer",
+        "structural engineer",
+    ],
+
+    "Energy": [
+        "oil and gas", "renewable energy",
+        "solar engineer", "energy analyst",
+        "power systems engineer",
+        "petroleum engineer",
+    ],
+
+    "Government": [
+        "policy analyst", "public administration",
+        "government relations", "diplomat",
+        "civil servant", "urban policy",
+    ],
+
+    "Hospitality": [
+        "hotel manager", "chef", "cook",
+        "restaurant manager", "barista",
+        "event coordinator", "tour guide",
+        "hospitality specialist",
+    ],
+
+    "Retail": [
+        "store manager", "merchandiser",
+        "cashier", "retail associate",
+        "buyer", "category manager",
+        "ecommerce specialist",
+    ],
+
+    "Transportation": [
+        "driver", "pilot", "flight attendant",
+        "air traffic controller", "shipping coordinator",
+        "fleet manager", "rail operator",
+    ],
+
+    "Agriculture": [
+        "agricultural engineer", "farmer",
+        "agronomist", "food scientist",
+        "livestock manager",
+    ],
+
+    "Real Estate": [
+        "real estate agent", "property manager",
+        "broker", "leasing consultant",
+        "facilities manager",
+    ],
+
+    "Consulting": [
+        "consultant", "strategy consultant",
+        "management consultant", "it consultant",
+        "business consultant", "solutions consultant",
+    ],
+
+    "Blockchain & Web3": [
+        "blockchain developer", "smart contract",
+        "solidity developer", "web3 engineer",
+        "crypto analyst", "defi",
+        "nft", "ethereum developer",
+    ],
+
+    "Game Development": [
+        "game designer", "level designer",
+        "technical artist", "game programmer",
+        "unity engineer", "unreal engineer",
+        "gameplay engineer",
+    ],
+
+    "AR/VR": [
+        "ar developer", "vr developer",
+        "xr engineer", "mixed reality",
+        "metaverse", "spatial computing",
+    ],
+
+    "IoT": [
+        "iot engineer", "edge computing",
+        "sensor engineer", "hardware engineer",
+        "embedded systems",
+    ],
+
+    "Semiconductor": [
+        "asic engineer", "fpga engineer",
+        "chip designer", "verification engineer",
+        "vlsi engineer", "semiconductor engineer",
+    ],
+
+    "BioTech": [
+        "bioinformatics", "genomics",
+        "biomedical engineer", "biotech researcher",
+        "drug discovery",
+    ],
+
+    "Aviation": [
+        "aerospace engineer", "aircraft mechanic",
+        "avionics engineer", "flight operations",
+    ],
+
+    "Maritime": [
+        "marine engineer", "naval architect",
+        "ship captain", "deck officer",
+        "port operations",
+    ],
+
+    "Nonprofit": [
+        "ngo", "fundraising", "grant writer",
+        "program coordinator", "social worker",
+        "community outreach",
+    ]
 }
 
 SALARY_BOUNDS_BY_LEVEL = {
@@ -361,29 +953,76 @@ def parse_date(val) -> pd.Timestamp:
     return pd.NaT
 
 
+def normalize_country(raw: str) -> str:
+    if not raw or raw.strip().lower() in ("nan", "none", "", "unknown"):
+        return "Unknown"
+
+    s = raw.strip()
+    s_lower = s.lower()
+
+    if s_lower in _COUNTRY_ALIASES:
+        return _COUNTRY_ALIASES[s_lower]
+
+    s_clean = re.sub(r"\s+(metropolitan area|metro area|greater|area)\b.*$", "", s_lower).strip()
+    if s_clean in _COUNTRY_ALIASES:
+        return _COUNTRY_ALIASES[s_clean]
+
+    if re.search(r"metropolitan area|metro area", s_lower):
+        for city_kw, country in _METRO_AREA_COUNTRY:
+            if city_kw in s_lower:
+                return country
+
+    if re.fullmatch(r"[A-Z]{2}", s) and s in _US_STATE_ABBR:
+        return "United States"
+
+    if re.fullmatch(r"[A-Z]{2}", s):
+        return "Unknown"
+
+    for city in _US_CITIES:
+        if city in s_lower:
+            return "United States"
+
+    for alias, country in _COUNTRY_ALIASES.items():
+        if re.search(r"\b" + re.escape(alias) + r"\b", s_lower):
+            return country
+
+    if len(s) > 2 and s[0].isupper():
+        return s
+    return "Unknown"
+
+
 def parse_location(loc) -> tuple:
     if loc is None or (isinstance(loc, float) and np.isnan(loc)):
-        return None, None, "Unknown", "Other"
+        return None, "Unknown"
     loc_str = str(loc).strip()
     if not loc_str or loc_str.lower() in ("nan", "none", ""):
-        return None, None, "Unknown", "Other"
-
-    loc_lower = loc_str.lower()
-    region = "Other"
-    for keyword, reg in REGION_MAP_SORTED:
-        if re.search(r"\b" + re.escape(keyword) + r"\b", loc_lower):
-            region = reg
-            break
+        return None, "Unknown"
 
     parts = [p.strip() for p in re.split(r"[,\|]+", loc_str) if p.strip()]
+
+    country_raw = None
+    city = None
+
     if len(parts) == 0:
-        return None, None, "Unknown", region
+        country_raw = loc_str
     elif len(parts) == 1:
-        return None, None, parts[0], region
+        country_raw = parts[0]
+        city = None
     elif len(parts) == 2:
-        return parts[0], None, parts[1], region
+        city = parts[0]
+        country_raw = parts[1]
     else:
-        return parts[0], parts[1], parts[-1], region
+        city = parts[0]
+        country_raw = parts[-1]
+
+    country = normalize_country(country_raw or "")
+
+    if country == "Unknown" and city:
+        country = normalize_country(city)
+        if country != "Unknown":
+            city = None
+
+    return city, country
 
 
 def infer_job_level(title) -> str:
@@ -523,15 +1162,29 @@ def normalize_remote(val) -> bool:
 
 def normalize_platform(val) -> str:
     if val is None or (isinstance(val, float) and np.isnan(val)):
-        return "Unknown"
+        return "LinkedIn"
     mapping = {
-        "linkedin": "LinkedIn", "indeed": "Indeed",
-        "glassdoor": "Glassdoor", "zip_recruiter": "ZipRecruiter",
-        "ziprecruiter": "ZipRecruiter", "google": "Google Jobs",
-        "google jobs": "Google Jobs", "google_jobs": "Google Jobs",
-        "kaggle": "Kaggle Historical", "kaggle_2024": "Kaggle Historical",
+        "linkedin": "LinkedIn",
+        "indeed": "Indeed",
+        "glassdoor": "Glassdoor",
+        "zip_recruiter": "ZipRecruiter",
+        "ziprecruiter": "ZipRecruiter",
+        "google": "Google Jobs",
+        "google jobs": "Google Jobs",
+        "google_jobs": "Google Jobs",
+        "kaggle": "LinkedIn",
+        "kaggle_2024": "LinkedIn",
+        "kaggle_linkedin": "LinkedIn",
+        "kaggle linkedin": "LinkedIn",
     }
-    return mapping.get(str(val).lower().strip(), str(val).strip().title() or "Unknown")
+    normalized = mapping.get(str(val).lower().strip())
+    if normalized:
+        return normalized
+    known = {"linkedin", "indeed", "glassdoor", "ziprecruiter", "google jobs"}
+    candidate = str(val).strip().title()
+    if candidate.lower() in {k.lower() for k in known}:
+        return candidate
+    return "LinkedIn"
 
 
 def _make_source_hash(row: pd.Series) -> str:
@@ -593,9 +1246,8 @@ def preprocess(df: pd.DataFrame, source_label: str = "unknown") -> pd.DataFrame:
 
     loc_parsed = df.get("location", pd.Series(dtype=str)).apply(parse_location)
     df["loc_city"] = loc_parsed.apply(lambda x: x[0])
-    df["loc_province"] = loc_parsed.apply(lambda x: x[1])
-    df["loc_country"] = loc_parsed.apply(lambda x: x[2])
-    df["global_region"] = loc_parsed.apply(lambda x: x[3])
+    df["loc_country"] = loc_parsed.apply(lambda x: x[1])
+    df["global_region"] = df["loc_country"].map(REGION_MAP).fillna("Other")
 
     df["job_level"] = title_col.apply(infer_job_level)
     df["job_category"] = title_col.apply(infer_job_category)

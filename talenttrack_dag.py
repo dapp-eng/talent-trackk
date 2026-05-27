@@ -148,7 +148,7 @@ def task_preprocess_kaggle(kaggle_raw_path):
     _logger = logging.getLogger(__name__)
     from transform.preprocess import preprocess_file
     if not kaggle_raw_path:
-        _print("There's no new data from Kaggle, skip preprocess.")
+        _logger.warning("There's no new data from Kaggle, skip preprocess.")
         return None
     if not Path(kaggle_raw_path).exists():
         fallback = os.path.join(root, "data", "raw", "kaggle_staged.parquet")
@@ -299,11 +299,8 @@ def task_load_kaggle(kaggle_deduped_path, kaggle_entities_path):
     from load.load_dimensions import (
         upsert_dim_time, upsert_dim_location, upsert_dim_company,
         upsert_dim_position, upsert_dim_platform, upsert_dim_skill,
-        upsert_dim_entity,
     )
-    from load.load_facts import (
-        load_fact_job_posting, load_bridge_job_skill, load_bridge_job_entity,
-    )
+    from load.load_facts import load_fact_job_posting, load_bridge_job_skill
     if not kaggle_deduped_path or not Path(kaggle_deduped_path).exists():
         return
     df = pd.read_parquet(kaggle_deduped_path)
@@ -323,13 +320,9 @@ def task_load_kaggle(kaggle_deduped_path, kaggle_entities_path):
     position_map = upsert_dim_position(df)
     platform_map = upsert_dim_platform(df["platform_norm"].dropna().unique().tolist())
     skill_map = upsert_dim_skill(entities_df) if not entities_df.empty else {}
-    entity_map = upsert_dim_entity(entities_df) if not entities_df.empty else {}
     job_id_map = load_fact_job_posting(df, time_map, location_map, company_map, position_map, platform_map)
-    if not entities_df.empty:
-        if skill_map:
-            load_bridge_job_skill(entities_df, job_id_map, skill_map)
-        if entity_map:
-            load_bridge_job_entity(entities_df, job_id_map, entity_map)
+    if not entities_df.empty and skill_map:
+        load_bridge_job_skill(entities_df, job_id_map, skill_map)
 
 
 def task_load_periodic(periodic_deduped_path, periodic_entities_path):
@@ -352,11 +345,8 @@ def task_load_periodic(periodic_deduped_path, periodic_entities_path):
     from load.load_dimensions import (
         upsert_dim_time, upsert_dim_location, upsert_dim_company,
         upsert_dim_position, upsert_dim_platform, upsert_dim_skill,
-        upsert_dim_entity,
     )
-    from load.load_facts import (
-        load_fact_job_posting, load_bridge_job_skill, load_bridge_job_entity,
-    )
+    from load.load_facts import load_fact_job_posting, load_bridge_job_skill
     if not periodic_deduped_path or not Path(periodic_deduped_path).exists():
         return
     df = pd.read_parquet(periodic_deduped_path)
@@ -376,13 +366,9 @@ def task_load_periodic(periodic_deduped_path, periodic_entities_path):
     position_map = upsert_dim_position(df)
     platform_map = upsert_dim_platform(df["platform_norm"].dropna().unique().tolist())
     skill_map = upsert_dim_skill(entities_df) if not entities_df.empty else {}
-    entity_map = upsert_dim_entity(entities_df) if not entities_df.empty else {}
     job_id_map = load_fact_job_posting(df, time_map, location_map, company_map, position_map, platform_map)
-    if not entities_df.empty:
-        if skill_map:
-            load_bridge_job_skill(entities_df, job_id_map, skill_map)
-        if entity_map:
-            load_bridge_job_entity(entities_df, job_id_map, entity_map)
+    if not entities_df.empty and skill_map:
+        load_bridge_job_skill(entities_df, job_id_map, skill_map)
 
 
 def task_refresh_views():

@@ -20,7 +20,6 @@ def q_skill_demand_cube(engine=None) -> pd.DataFrame:
             ds.skill_domain,
             dp.job_category,
             dp.job_level,
-            dl.global_region,
             dl.country,
             dpl.platform_name,
             COUNT(DISTINCT f.job_id) AS posting_count,
@@ -38,7 +37,7 @@ def q_skill_demand_cube(engine=None) -> pd.DataFrame:
             dt.year, dt.quarter, dt.month, dt.week_label,
             ds.skill_name, ds.skill_type, ds.skill_domain,
             dp.job_category, dp.job_level,
-            dl.global_region, dl.country,
+            dl.country,
             dpl.platform_name
         )
         HAVING COUNT(DISTINCT f.job_id) > 0
@@ -71,11 +70,11 @@ def q_skill_trend_weekly(skill_name: str, engine=None) -> pd.DataFrame:
     query = """
         SELECT
             week_label, year, week,
-            job_category, global_region,
+            job_category, country,
             SUM(posting_count) AS posting_count
         FROM mv_weekly_skill_demand
         WHERE skill_name = %(skill)s
-        GROUP BY week_label, year, week, job_category, global_region
+        GROUP BY week_label, year, week, job_category, country
         ORDER BY year, week;
     """
     return pd.read_sql(query, engine, params={"skill": skill_name})
@@ -86,12 +85,12 @@ def q_platform_comparison(engine=None) -> pd.DataFrame:
         engine = get_engine_cached()
     query = """
         SELECT
-            platform_name, job_category, global_region,
+            platform_name, job_category, country,
             SUM(posting_count) AS total_postings,
             AVG(with_salary_count * 1.0 / NULLIF(posting_count, 0)) AS pct_with_salary,
             AVG(remote_count * 1.0 / NULLIF(posting_count, 0)) AS pct_remote
         FROM mv_platform_monthly
-        GROUP BY platform_name, job_category, global_region
+        GROUP BY platform_name, job_category, country
         ORDER BY total_postings DESC;
     """
     return pd.read_sql(query, engine)
@@ -108,10 +107,11 @@ def q_forecast_next_n_weeks(skill_name: str = None, n_weeks: int = 8,
             fsd.forecast_week,
             ds.skill_name,
             fsd.job_category,
-            fsd.global_region,
+            fsd.country,
             fsd.predicted_count,
             fsd.lower_bound,
             fsd.upper_bound,
+            fsd.trend_score,
             fsd.model_name,
             fsd.generated_at
         FROM forecast_skill_demand fsd
@@ -123,6 +123,29 @@ def q_forecast_next_n_weeks(skill_name: str = None, n_weeks: int = 8,
     else:
         query = base + " ORDER BY fsd.forecast_week_label, fsd.predicted_count DESC;"
         return pd.read_sql(query, engine)
+
+
+def q_trending_skills(top_n: int = 20, min_postings: int = 3, engine=None) -> pd.DataFrame:
+    if engine is None:
+        engine = get_engine_cached()
+    query = """
+        SELECT
+            ds.skill_name,
+            fsd.job_category,
+            fsd.country,
+            fsd.forecast_week_label,
+            fsd.predicted_count,
+            fsd.lower_bound,
+            fsd.upper_bound,
+            fsd.trend_score,
+            fsd.model_name
+        FROM forecast_skill_demand fsd
+        JOIN dim_skill ds ON fsd.skill_id = ds.skill_id
+        WHERE fsd.predicted_count >= %(min_p)s
+        ORDER BY fsd.trend_score DESC, fsd.predicted_count DESC
+        LIMIT %(n)s;
+    """
+    return pd.read_sql(query, engine, params={"min_p": min_postings, "n": top_n})
 
 
 def q_salary_by_skill_level(engine=None) -> pd.DataFrame:
