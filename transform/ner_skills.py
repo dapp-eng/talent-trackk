@@ -85,23 +85,61 @@ LABEL_TO_TYPE = {
     "knowledge": "Knowledge",
 }
 
-GLINER_CHUNK_SIZE = 800
-GLINER_CHUNK_OVERLAP = 200
 GLINER_THRESHOLD = 0.35
 GLINER_THRESHOLD_NON_EN = 0.25
 ENGLISH_LANGS = {"en"}
+FALLBACK_CHUNK_SIZE = 3500
+
+SECTION_PATTERNS = re.compile(
+    r"(?:^|\n)"
+    r"(?P<header>"
+    r"requirements?|required skills?|minimum qualifications?|basic qualifications?"
+    r"|preferred qualifications?|technical (skills?|requirements?|qualifications?)"
+    r"|tech(nical)? stack|technologies|tools?\s*(&|and)\s*technologies"
+    r"|what (you('ll|will) need|we('re| are) looking for|you bring|you have)"
+    r"|skills?( required| needed| &amp; experience)?"
+    r"|qualifications?|experience( required| needed)?"
+    r"|must.?have|nice.?to.?have|good.?to.?have"
+    r"|kualifikasi|persyaratan|keahlian|kemampuan|teknologi|stack teknologi"
+    r"|kompeten[cs]i|syarat"
+    r")"
+    r"\s*:?\s*\n",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+ANY_HEADER_PATTERN = re.compile(
+    r"\n(?=[A-Z][A-Za-z\s&]{2,40}:?\s*\n)",
+    re.MULTILINE,
+)
 
 
-def _chunk_text(text: str, chunk_size: int, overlap: int) -> list:
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunks.append(text[start:end])
-        if end >= len(text):
-            break
-        start += chunk_size - overlap
-    return chunks
+def _extract_skill_sections(text: str) -> str:
+    matches = list(SECTION_PATTERNS.finditer(text))
+    if not matches:
+        return ""
+
+    all_headers = list(ANY_HEADER_PATTERN.finditer(text))
+    header_positions = sorted({m.start() for m in all_headers} | {m.start() for m in matches})
+
+    sections = []
+    for match in matches:
+        start = match.end()
+        next_boundary = next(
+            (pos for pos in header_positions if pos > match.start()),
+            len(text),
+        )
+        section_text = text[start:next_boundary].strip()
+        if section_text:
+            sections.append(section_text)
+
+    return "\n".join(sections)
+
+
+def _get_ner_input(text: str) -> str:
+    extracted = _extract_skill_sections(text)
+    if extracted and len(extracted) >= 100:
+        return extracted
+    return text[:FALLBACK_CHUNK_SIZE]
 
 
 def _normalize_entity(word: str) -> str:
@@ -127,39 +165,49 @@ def _load_gliner():
 
 def _run_gliner(model, texts: list, src_hashes: list, langs: list) -> list:
     records = []
+    section_hits = 0
+    fallback_hits = 0
     try:
         for i, (text, src_hash, lang) in enumerate(zip(texts, src_hashes, langs)):
             if not isinstance(text, str) or not text.strip():
                 continue
             threshold = GLINER_THRESHOLD if lang in ENGLISH_LANGS else GLINER_THRESHOLD_NON_EN
-            chunks = _chunk_text(text, GLINER_CHUNK_SIZE, GLINER_CHUNK_OVERLAP)
+
+            extracted = _extract_skill_sections(text)
+            if extracted and len(extracted) >= 100:
+                ner_input = extracted
+                section_hits += 1
+            else:
+                ner_input = text[:FALLBACK_CHUNK_SIZE]
+                fallback_hits += 1
+
             seen = set()
             try:
-                for chunk in chunks:
-                    entities = model.predict_entities(chunk, GLINER_LABELS, threshold=threshold)
-                    for ent in entities:
-                        word = _normalize_entity(ent.get("text", ""))
-                        if not word or len(word) < 1:
-                            continue
-                        if re.fullmatch(r"[\W\d]+", word):
-                            continue
-                        label = ent.get("label", "")
-                        entity_type = LABEL_TO_TYPE.get(label, "Skill")
-                        score = round(float(ent.get("score", 0.0)), 4)
-                        if word in seen:
-                            continue
-                        seen.add(word)
-                        records.append({
-                            "source_hash": src_hash,
-                            "entity_text": word,
-                            "entity_type": entity_type,
-                            "source_model": GLINER_MODEL,
-                            "extraction_confidence": score,
-                        })
+                entities = model.predict_entities(ner_input, GLINER_LABELS, threshold=threshold)
+                for ent in entities:
+                    word = _normalize_entity(ent.get("text", ""))
+                    if not word or len(word) < 1:
+                        continue
+                    if re.fullmatch(r"[\W\d]+", word):
+                        continue
+                    label = ent.get("label", "")
+                    entity_type = LABEL_TO_TYPE.get(label, "Skill")
+                    score = round(float(ent.get("score", 0.0)), 4)
+                    if word in seen:
+                        continue
+                    seen.add(word)
+                    records.append({
+                        "source_hash": src_hash,
+                        "entity_text": word,
+                        "entity_type": entity_type,
+                        "source_model": GLINER_MODEL,
+                        "extraction_confidence": score,
+                    })
             except Exception as e:
                 logger.warning(f"GliNER inference failed row {i}: {e}")
+
             if (i + 1) % 10 == 0:
-                logger.warning(f"NER progress: {i+1}/{len(texts)}")
+                logger.warning(f"NER progress: {i+1}/{len(texts)} (section={section_hits}, fallback={fallback_hits})")
     finally:
         del model
         gc.collect()
@@ -168,6 +216,8 @@ def _run_gliner(model, texts: list, src_hashes: list, langs: list) -> list:
             torch.cuda.empty_cache()
         except Exception:
             pass
+
+    logger.warning(f"NER extraction complete: section_hit={section_hits}, fallback={fallback_hits}")
     return records
 
 

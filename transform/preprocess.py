@@ -495,6 +495,9 @@ JOB_CATEGORY_KEYWORDS = {
         "business analyst", "quantitative analyst", "decision scientist",
         "data visualization", "power bi", "tableau developer",
         "statistician", "research analyst", "operations analyst",
+        "data entry", "data entry clerk", "data entry operator", "data entry specialist",
+        "data input", "data clerk", "data processor", "data capture",
+        "data administrator", "data coordinator",
     ],
 
     "Machine Learning": [
@@ -636,7 +639,10 @@ JOB_CATEGORY_KEYWORDS = {
         "talent acquisition", "people operations",
         "hr business partner", "compensation analyst",
         "learning and development", "organizational development",
-        "technical recruiter",
+        "technical recruiter", "hr generalist", "hr specialist",
+        "hr coordinator", "hr admin", "hr manager", "hr analyst",
+        "payroll", "talent management", "workforce planning",
+        "employee relations", "onboarding specialist",
     ],
 
     "Customer Support": [
@@ -651,7 +657,13 @@ JOB_CATEGORY_KEYWORDS = {
         "business operations", "supply chain",
         "logistics", "procurement",
         "inventory analyst", "warehouse manager",
-        "process improvement",
+        "process improvement", "warehouse", "dispatch",
+        "warehouse clerk", "warehouse associate", "warehouse operator",
+        "logistics coordinator", "logistics specialist", "logistics analyst",
+        "fulfillment", "fulfillment associate", "shipping clerk",
+        "receiving clerk", "material handler", "inventory clerk",
+        "supply chain coordinator", "delivery coordinator",
+        "distribution", "transport coordinator", "fleet coordinator",
     ],
 
     "Healthcare": [
@@ -813,7 +825,153 @@ JOB_CATEGORY_KEYWORDS = {
         "ngo", "fundraising", "grant writer",
         "program coordinator", "social worker",
         "community outreach",
-    ]
+    ],
+
+    "Administration": [
+        "administrative assistant", "admin assistant", "office administrator",
+        "executive assistant", "personal assistant", "secretary",
+        "receptionist", "clerical", "office coordinator", "office manager",
+        "front desk", "administrative coordinator", "administrative officer",
+        "administrative staff", "administrative specialist",
+        "general affairs", "office support", "document controller",
+        "records manager", "filing clerk",
+    ],
+
+    "Finance": [
+        "accountant", "accounting", "bookkeeper", "controller",
+        "auditor", "financial analyst", "finance analyst",
+        "tax analyst", "tax accountant", "tax specialist",
+        "finance manager", "treasury", "budget analyst",
+        "cost analyst", "financial controller", "cfo",
+        "accounts payable", "accounts receivable", "finance officer",
+        "financial reporting", "internal audit",
+    ],
+}
+
+JOB_CATEGORY_KEYWORDS_MULTILINGUAL = {
+    "Data": [
+        "datos", "analista de datos", "ingeniero de datos", "entrada de datos",
+        "analisis de datos", "ciencia de datos",
+        "datos entrada", "captura de datos",
+        "analis data", "ilmuwan data", "insinyur data", "entri data",
+        "数据", "数据分析", "数据工程师", "数据科学家", "数据录入",
+    ],
+    "Engineering": [
+        "desarrollador", "programador", "ingeniero de software",
+        "desarrollo de software", "desarrollador web", "backend", "frontend",
+        "pengembang", "programmer", "insinyur perangkat lunak",
+        "perangkat lunak", "rekayasa perangkat lunak",
+        "软件工程师", "开发工程师", "程序员", "前端", "后端", "全栈",
+    ],
+    "Human Resources": [
+        "recursos humanos", "gestión humana", "reclutador", "talento humano",
+        "capital humano", "selección de personal", "nómina",
+        "sumber daya manusia", "sdm", "rekrutmen", "perekrut",
+        "manajemen talenta", "penggajian",
+        "人力资源", "人资", "招聘", "人事", "猎头", "hr",
+    ],
+    "Management": [
+        "gerente", "director", "jefe de", "coordinador", "supervisor",
+        "manajer", "direktur", "kepala", "koordinator", "supervisor",
+        "经理", "总监", "主管", "总裁", "副总", "负责人", "项目经理",
+    ],
+    "Operations": [
+        "logística", "logistica", "almacén", "almacen", "bodega",
+        "inventario", "cadena de suministro", "despacho", "distribución",
+        "operaciones", "auxiliar de bodega", "auxiliar de despacho",
+        "logistik", "operasional", "gudang", "pengadaan", "distribusi",
+        "运营", "物流", "仓库", "供应链", "配送", "仓储",
+    ],
+    "Customer Support": [
+        "atención al cliente", "atencion al cliente", "servicio al cliente",
+        "soporte", "atención ciudadana", "atención al ciudadano",
+        "layanan pelanggan", "dukungan pelanggan", "customer service",
+        "客服", "客户服务", "售后", "用户支持",
+    ],
+    "Sales": [
+        "ventas", "ejecutivo de ventas", "representante de ventas",
+        "desarrollo de negocios", "comercial", "vendedor",
+        "penjualan", "sales", "tenaga penjual", "pengembangan bisnis",
+        "销售", "业务", "商务", "销售代表", "销售经理",
+    ],
+    "Marketing": [
+        "marketing", "mercadeo", "publicidad", "comunicaciones",
+        "marketing digital", "redes sociales",
+        "pemasaran", "marketing", "iklan", "promosi", "media sosial",
+        "市场", "营销", "推广", "广告", "品牌", "市场营销",
+    ],
+    "Education": [
+        "docente", "profesor", "maestro", "tutor", "capacitador",
+        "formador", "instructor", "catedrático",
+        "guru", "dosen", "pengajar", "instruktur", "pelatih",
+        "教师", "讲师", "教授", "老师", "培训师", "辅导",
+    ],
+    "Healthcare": [
+        "médico", "medico", "enfermero", "enfermera", "farmacéutico",
+        "farmaceutico", "terapeuta", "paramédico",
+        "dokter", "perawat", "apoteker", "terapis", "bidan",
+        "医生", "护士", "药剂师", "医师", "治疗师",
+    ],
+    "Finance": [
+        "contable", "contador", "financiero", "tesorería", "auditor",
+        "contabilidad", "finanzas", "nómina contable",
+        "akuntan", "akuntansi", "keuangan", "bendahara", "audit",
+        "会计", "财务", "审计", "出纳", "财务分析", "税务",
+    ],
+    "Design": [
+        "diseñador", "diseño", "diseño gráfico", "diseño ux", "diseño ui",
+        "desainer", "desain", "desain grafis",
+        "设计师", "设计", "平面设计", "ui设计", "ux设计",
+    ],
+    "Administration": [
+        "administrativo", "administración", "asistente administrativo",
+        "auxiliar administrativo", "secretaria", "recepcionista",
+        "administrasi", "admin", "staf administrasi", "sekretaris",
+        "resepsionis", "tata usaha",
+        "行政", "秘书", "助理", "文员", "行政助理", "前台",
+    ],
+    "Manufacturing": [
+        "manufactura", "producción", "calidad", "técnico", "operario",
+        "mantenimiento", "mecánico",
+        "manufaktur", "produksi", "kualitas", "teknisi", "operator",
+        "perawatan",
+        "制造", "生产", "质量", "技术员", "操作员", "维修",
+    ],
+    "Retail": [
+        "cajero", "tienda", "comercio", "vendedor", "almacenista", "caja",
+        "kasir", "toko", "perdagangan", "pramuniaga",
+        "收银", "零售", "店员", "门店",
+    ],
+    "Security": [
+        "seguridad", "vigilante", "guardia de seguridad",
+        "keamanan", "satpam", "security",
+        "安保", "安全", "保安",
+    ],
+    "Construction": [
+        "construcción", "obra", "ingeniero civil", "arquitecto",
+        "konstruksi", "bangunan", "insinyur sipil", "arsitek",
+        "建筑", "土木", "施工", "建造",
+    ],
+    "Transportation": [
+        "conductor", "chofer", "piloto", "transporte", "repartidor",
+        "sopir", "pengemudi", "pilot", "transportasi",
+        "司机", "驾驶", "快递", "配送员",
+    ],
+}
+
+JOB_CATEGORY_PARTIAL_KEYWORDS = {
+    "Engineering": ["developer", "programmer", "coder"],
+    "Design": ["designer"],
+    "Human Resources": ["recruiter", "sourcer"],
+    "Marketing": ["marketer"],
+    "Finance": ["accountant", "bookkeeper", "auditor"],
+    "Transportation": ["driver", "chauffeur"],
+    "Consulting": ["consultant"],
+    "Education": ["teacher", "lecturer", "instructor", "tutor"],
+    "Healthcare": ["nurse", "doctor", "physician", "therapist", "dentist"],
+    "Legal": ["lawyer", "attorney", "paralegal"],
+    "QA & Testing": ["tester"],
+    "Data": ["analyst"],
 }
 
 SALARY_BOUNDS_BY_LEVEL = {
@@ -1051,13 +1209,29 @@ def infer_job_level(title) -> str:
     return "Unknown"
 
 
-def infer_job_category(title) -> str:
+def _kw_match(kw: str, text: str) -> bool:
+    if " " in kw:
+        return kw in text
+    return bool(re.search(r"\b" + re.escape(kw) + r"\b", text))
+
+
+def infer_job_category(title, title_original=None) -> str:
     if not title or (isinstance(title, float) and np.isnan(title)):
         return "Other"
     t = str(title).lower()
     for category, keywords in JOB_CATEGORY_KEYWORDS.items():
         for kw in keywords:
-            if kw in t:
+            if _kw_match(kw, t):
+                return category
+    words = set(re.findall(r"\b\w+\b", t))
+    for category, partial_kws in JOB_CATEGORY_PARTIAL_KEYWORDS.items():
+        for kw in partial_kws:
+            if kw in words:
+                return category
+    raw = str(title_original).lower() if title_original and not (isinstance(title_original, float) and np.isnan(title_original)) else t
+    for category, keywords in JOB_CATEGORY_KEYWORDS_MULTILINGUAL.items():
+        for kw in keywords:
+            if kw in raw:
                 return category
     return "Other"
 
@@ -1276,7 +1450,10 @@ def preprocess(df: pd.DataFrame, source_label: str = "unknown") -> pd.DataFrame:
     df["global_region"] = df["loc_country"].map(REGION_MAP).fillna("Other")
 
     df["job_level"] = df["title_clean"].apply(infer_job_level)
-    df["job_category"] = df["title_clean"].apply(infer_job_category)
+    df["job_category"] = df.apply(
+        lambda row: infer_job_category(row["title_clean"], row.get("title", "")),
+        axis=1,
+    )
 
     df = normalize_salary(df)
     df["is_remote"] = df.get("is_remote", pd.Series(dtype=object)).apply(normalize_remote)
