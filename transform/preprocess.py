@@ -1247,6 +1247,16 @@ def preprocess(df: pd.DataFrame, source_label: str = "unknown") -> pd.DataFrame:
     loc_parsed = df.get("location", pd.Series(dtype=str)).apply(parse_location)
     df["loc_city"] = loc_parsed.apply(lambda x: x[0])
     df["loc_country"] = loc_parsed.apply(lambda x: x[1])
+    df["loc_country"] = df["loc_country"].apply(lambda c: c if c in REGION_MAP else "Unknown")
+    if "search_location" in df.columns:
+        unknown_mask = df["loc_country"] == "Unknown"
+        if unknown_mask.any():
+            df.loc[unknown_mask, "loc_country"] = df.loc[unknown_mask, "search_location"].apply(
+                lambda x: normalize_country(str(x))
+                if pd.notna(x) and str(x).strip().lower() not in ("nan", "none", "")
+                else "Unknown"
+            )
+            logger.warning(f"  Filled {unknown_mask.sum()} unknown countries from search_location")
     df["global_region"] = df["loc_country"].map(REGION_MAP).fillna("Other")
 
     df["job_level"] = title_col.apply(infer_job_level)

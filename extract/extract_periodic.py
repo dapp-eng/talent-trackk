@@ -44,7 +44,8 @@ def _make_hash(row: pd.Series) -> str:
     company = str(row.get("company") or "").strip().lower()
     title = str(row.get("title") or "").strip().lower()
     date = str(row.get("date_posted") or "").strip()
-    return hashlib.md5(f"{company}|{title}|{date}".encode("utf-8")).hexdigest()
+    search_loc = str(row.get("search_location") or "").strip().lower()
+    return hashlib.md5(f"{company}|{title}|{date}|{search_loc}".encode("utf-8")).hexdigest()
 
 
 def _align_columns(df: pd.DataFrame, location: str) -> pd.DataFrame:
@@ -70,7 +71,7 @@ def _scrape_one(scrape_jobs, location: str, log: dict) -> pd.DataFrame:
             results_wanted=JOBSPY_RESULTS_PER_SEARCH,
         )
         if df is None or len(df) == 0:
-            logger.warning(f"  Scraped@ {location!r}: 0 result")
+            logger.warning(f"  Scraped @ {location!r}: 0 result")
             return pd.DataFrame()
         df = _align_columns(df, location)
         logger.warning(f"  Scraped @ {location!r}: {len(df)} raw result")
@@ -89,24 +90,6 @@ def _write_empty(out_path: Path, ts: str, log: dict) -> Path:
     log["total"] = 0
     (PERIODIC_RAW_PATH / f"periodic_{ts}_log.json").write_text(json.dumps(log, indent=2))
     return out_path
-
-
-def _load_existing_hashes() -> set:
-    try:
-        from db import get_connection
-        import psycopg2.extras
-        conn = get_connection()
-        try:
-            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur.execute("SELECT DISTINCT source_hash FROM fact_job_posting;")
-            hashes = {r["source_hash"] for r in cur.fetchall()}
-            logger.warning(f"Periodic: loaded {len(hashes)} existing hashes from DB.")
-            return hashes
-        finally:
-            conn.close()
-    except Exception as e:
-        logger.warning(f"Could not load existing hashes from DB (periodic): {e}.")
-        return set()
 
 
 def scrape_periodic(execution_date: str = None) -> Path:
@@ -131,14 +114,15 @@ def scrape_periodic(execution_date: str = None) -> Path:
         )
         return _write_empty(out_path, ts, log)
 
-    existing_db_hashes: set = _load_existing_hashes()
-    locations = JOBSPY_GLOBAL_LOCATIONS[:_MAX_LOCATIONS]
+    locations = random.sample(JOBSPY_GLOBAL_LOCATIONS, min(_MAX_LOCATIONS, len(JOBSPY_GLOBAL_LOCATIONS)))
+    log["locations_selected"] = locations
 
     logger.warning(
-        f"Periodic scrape: {len(locations)} locations, cap={PERIODIC_ROW_LIMIT} rows"
+        f"Periodic scrape: {len(locations)} locations selected this run: {locations}, "
+        f"cap={PERIODIC_ROW_LIMIT} rows"
     )
 
-    seen_hashes: set = set(existing_db_hashes)
+    seen_hashes: set = set()
     all_frames: list = []
     total_unique = 0
     reached_cap = False

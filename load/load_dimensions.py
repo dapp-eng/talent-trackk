@@ -36,9 +36,9 @@ def upsert_dim_location(df: pd.DataFrame) -> dict:
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         for _, row in rows.iterrows():
-            city = row["loc_city"] or None
-            country = row["loc_country"] or "Unknown"
-            region = row["global_region"] or "Other"
+            city = str(row["loc_city"]).strip() if row["loc_city"] else ""
+            country = str(row["loc_country"]).strip() or "Unknown"
+            region = str(row["global_region"]).strip() or "Other"
             cur.execute("""
                 INSERT INTO dim_location (city, country, region)
                 VALUES (%s, %s, %s)
@@ -50,8 +50,8 @@ def upsert_dim_location(df: pd.DataFrame) -> dict:
         mapping = {}
         for r in cur.fetchall():
             key = (
-                r["city"] or "",
-                r["country"] or "Unknown",
+                str(r["city"]).strip() if r["city"] else "",
+                str(r["country"]).strip() or "Unknown",
             )
             mapping[key] = r["location_id"]
     finally:
