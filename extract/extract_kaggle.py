@@ -9,6 +9,7 @@ from config import KAGGLE_DATASET_PATH, DATA_PROCESSED_DIR
 logger = logging.getLogger(__name__)
 
 KAGGLE_BATCH_LIMIT = 150
+KAGGLE_OFFSET_FILE = "kaggle_offset.json"
 
 LINKEDIN_COLUMN_MAP = {
     "title": ["title", "job_title", "position", "job title"],
@@ -90,23 +91,19 @@ def _resolve_company_names(df: pd.DataFrame, src_dir: Path) -> pd.DataFrame:
     return df
 
 
-def _load_existing_hashes() -> set:
-    try:
-        from db import get_connection
-        import psycopg2.extras
-        conn = get_connection()
+def _load_offset() -> int:
+    state_file = DATA_PROCESSED_DIR / KAGGLE_OFFSET_FILE
+    if state_file.exists():
         try:
-            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur.execute("SELECT DISTINCT source_hash FROM fact_job_posting;")
-            hashes = {r["source_hash"] for r in cur.fetchall()}
-            logger.warning(f"Loaded {len(hashes)} existing hashes from DB.")
-            return hashes
-        finally:
-            conn.close()
-    except Exception as e:
-        logger.warning(f"Could not load existing hashes from DB: {e}. "
-                       "Proceeding without cross-run dedup.")
-        return set()
+            return int(json.loads(state_file.read_text()).get("offset", 0))
+        except Exception:
+            return 0
+    return 0
+
+
+def _save_offset(offset: int):
+    state_file = DATA_PROCESSED_DIR / KAGGLE_OFFSET_FILE
+    state_file.write_text(json.dumps({"offset": offset, "updated_at": datetime.utcnow().isoformat()}))
 
 
 def extract_kaggle(path: str = None) -> Path:
@@ -135,64 +132,47 @@ def extract_kaggle(path: str = None) -> Path:
         out_path = DATA_PROCESSED_DIR / "kaggle_staged.parquet"
         src_dir  = src.parent
 
-        existing_db_hashes: set = _load_existing_hashes()
+        offset = _load_offset()
+        logger.warning(f"Kaggle extraction starting at row offset={offset}")
 
-        seen_hashes: set = set(existing_db_hashes)
-        output_chunks: list = []
+        skip = list(range(1, offset + 1)) if offset > 0 else None
+        df = pd.read_csv(src, skiprows=skip, nrows=KAGGLE_BATCH_LIMIT,
+                         low_memory=False, on_bad_lines="skip")
 
-        reader = pd.read_csv(src, chunksize=500, low_memory=False, on_bad_lines="skip")
-
-        for i, chunk in enumerate(reader):
-            chunk = _normalize_columns(chunk)
-            chunk = _resolve_company_names(chunk, src_dir)
-
-            if "date_posted" in chunk.columns:
-                chunk["date_posted"] = chunk["date_posted"].apply(_parse_listed_time)
-
-            if "platform" not in chunk.columns or chunk["platform"].isna().all():
-                chunk["platform"] = "LinkedIn"
-            else:
-                chunk["platform"] = chunk["platform"].fillna("LinkedIn")
-
-            chunk["source_hash"] = chunk.apply(_make_hash, axis=1)
-            chunk["extraction_ts"] = datetime.utcnow().isoformat()
-            chunk["data_source"] = "kaggle_linkedin"
-            
-            new_rows = chunk[~chunk["source_hash"].isin(seen_hashes)].copy()
-            if new_rows.empty:
-                continue
-
-            collected = sum(len(c) for c in output_chunks)
-            remaining = KAGGLE_BATCH_LIMIT - collected
-            if remaining <= 0:
-                break
-
-            new_rows = new_rows.head(remaining)
-            seen_hashes.update(new_rows["source_hash"].values)
-            output_chunks.append(new_rows)
-
-            collected = sum(len(c) for c in output_chunks)
-            logger.warning(f"Kaggle chunk {i + 1}: +{len(new_rows)} rows (total: {collected})")
-
-            if collected >= KAGGLE_BATCH_LIMIT:
-                break
-
-        if not output_chunks:
-            logger.warning("Kaggle extraction: no new rows (all already in DB or empty source).")
+        if df.empty:
+            logger.warning("Kaggle: end of CSV reached, resetting offset to 0.")
+            _save_offset(0)
             return None
 
-        df = pd.concat(output_chunks, ignore_index=True)
+        df = _normalize_columns(df)
+        df = _resolve_company_names(df, src_dir)
+
+        if "date_posted" in df.columns:
+            df["date_posted"] = df["date_posted"].apply(_parse_listed_time)
+
+        if "platform" not in df.columns or df["platform"].isna().all():
+            df["platform"] = "LinkedIn"
+        else:
+            df["platform"] = df["platform"].fillna("LinkedIn")
+
+        df["source_hash"] = df.apply(_make_hash, axis=1)
+        df["extraction_ts"] = datetime.utcnow().isoformat()
+        df["data_source"] = "kaggle_linkedin"
+
+        _save_offset(offset + len(df))
+        logger.warning(f"Kaggle extraction: {len(df)} rows read (offset now {offset + len(df)}) -> {out_path}")
 
         keep_cols = [c for c in EMPTY_COLS if c in df.columns]
         extra_cols = [c for c in df.columns if c not in EMPTY_COLS]
         df = df[keep_cols + extra_cols]
 
         df.to_parquet(out_path, index=False, engine="pyarrow")
-        logger.warning(f"Kaggle extraction done: {len(df)} new rows → {out_path}")
 
         meta = {
             "source": "kaggle_linkedin",
             "rows": len(df),
+            "offset_start": offset,
+            "offset_end": offset + len(df),
             "target_limit": KAGGLE_BATCH_LIMIT,
             "extracted_at": datetime.utcnow().isoformat(),
             "output": str(out_path),

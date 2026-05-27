@@ -88,7 +88,8 @@ LABEL_TO_TYPE = {
 GLINER_THRESHOLD = 0.35
 GLINER_THRESHOLD_NON_EN = 0.25
 ENGLISH_LANGS = {"en"}
-FALLBACK_CHUNK_SIZE = 1300
+FALLBACK_CHUNK_SIZE = 1500
+MIN_SECTION_LEN = 50
 
 SECTION_PATTERNS = re.compile(
     r"(?:^|\n)"
@@ -96,24 +97,39 @@ SECTION_PATTERNS = re.compile(
     r"requirements?|required skills?|minimum qualifications?|basic qualifications?"
     r"|preferred qualifications?|technical (skills?|requirements?|qualifications?)"
     r"|tech(nical)? stack|technologies|tools?\s*(&|and)\s*technologies"
-    r"|what (you('ll|will) need|we('re| are) looking for|you bring|you have)"
-    r"|skills?( required| needed| &amp; experience)?"
+    r"|what (you('ll|will) need|we('re| are) looking for|you bring|you have|you.ll bring)"
+    r"|skills?( required| needed| &amp; experience| & experience| and experience| you.ll need| you need)?"
     r"|qualifications?|experience( required| needed)?"
     r"|must.?have|nice.?to.?have|good.?to.?have"
+    r"|you (will|should|must|are expected to) (have|know|bring|possess|demonstrate)"
+    r"|we (are looking for|expect|require|need|value)"
+    r"|your (skills?|qualifications?|background|profile|experience)"
+    r"|about you|the ideal candidate|who you are|what you bring|who we.re looking for"
+    r"|key (skills?|requirements?|qualifications?|competencies)"
+    r"|core (skills?|requirements?|competencies)|essential (skills?|requirements?|qualifications?)"
+    r"|desired (skills?|qualifications?|experience)|ideal (skills?|background|candidate)"
+    r"|education|certifications?|licenses?"
     r"|kualifikasi|persyaratan|keahlian|kemampuan|teknologi|stack teknologi"
-    r"|kompeten[cs]i|syarat"
+    r"|kompeten[cs]i|syarat|kriteria|yang dibutuhkan|yang diperlukan|tentang kamu"
     r")"
-    r"\s*:?\s*\n",
+    r"[ \t]*:?[ \t]*\n",
     re.IGNORECASE | re.MULTILINE,
 )
 
 ANY_HEADER_PATTERN = re.compile(
-    r"\n(?=[A-Z][A-Za-z\s&]{2,40}:?\s*\n)",
+    r"\n(?=[A-Z][A-Za-z\s&]{2,40}:?[ \t]*\n)",
     re.MULTILINE,
 )
 
 
+def _normalize_newlines(text: str) -> str:
+    text = re.sub(r"\r\n|\r", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text
+
+
 def _extract_skill_sections(text: str) -> str:
+    text = _normalize_newlines(text)
     matches = list(SECTION_PATTERNS.finditer(text))
     if not matches:
         return ""
@@ -137,7 +153,7 @@ def _extract_skill_sections(text: str) -> str:
 
 def _get_ner_input(text: str) -> str:
     extracted = _extract_skill_sections(text)
-    if extracted and len(extracted) >= 100:
+    if extracted and len(extracted) >= MIN_SECTION_LEN:
         return extracted
     return text[:FALLBACK_CHUNK_SIZE]
 
@@ -173,8 +189,9 @@ def _run_gliner(model, texts: list, src_hashes: list, langs: list) -> list:
                 continue
             threshold = GLINER_THRESHOLD if lang in ENGLISH_LANGS else GLINER_THRESHOLD_NON_EN
 
+            text = _normalize_newlines(text)
             extracted = _extract_skill_sections(text)
-            if extracted and len(extracted) >= 100:
+            if extracted and len(extracted) >= MIN_SECTION_LEN:
                 ner_input = extracted
                 section_hits += 1
             else:

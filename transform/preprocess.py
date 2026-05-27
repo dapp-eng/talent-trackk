@@ -1022,12 +1022,16 @@ def clean_text_ner(text) -> str:
     if not text.strip():
         return ""
     text = unicodedata.normalize("NFKD", text)
+    text = re.sub(r"\r\n|\r", "\n", text)
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<li\b[^>]*>", "\n", text, flags=re.IGNORECASE)
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"&[a-zA-Z#0-9]+;", " ", text)
     text = re.sub(r"https?://\S+", " ", text)
-    text = re.sub(r"[^\w\s\.,\-\+\#\/\(\)\:]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    text = re.sub(r"[^\w\s\.,\-\+\#\/\(\)\:\n]", " ", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def parse_date(val) -> pd.Timestamp:

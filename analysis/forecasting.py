@@ -88,11 +88,17 @@ def _holt_winters(values: np.ndarray, horizon: int) -> dict:
             model = ExponentialSmoothing(values, trend="add", seasonal="add", seasonal_periods=4)
         else:
             model = ExponentialSmoothing(values, trend="add")
-        fit = model.fit(optimized=True, use_brute=False)
+        fit = model.fit(optimized=True)
         preds = np.maximum(fit.forecast(horizon), 0)
-        ci = fit.simulate(horizon, repetitions=100, error="add")
-        lower = np.maximum(ci.quantile(0.025, axis=1).values, 0)
-        upper = ci.quantile(0.975, axis=1).values
+        try:
+            ci = fit.simulate(horizon, repetitions=100, error="add")
+            ci_arr = np.array(ci)
+            lower = np.maximum(np.quantile(ci_arr, 0.025, axis=1), 0)
+            upper = np.quantile(ci_arr, 0.975, axis=1)
+        except Exception:
+            std = float(np.std(values[-min(len(values), 8):]))
+            lower = np.maximum(preds - 1.96 * std, 0)
+            upper = preds + 1.96 * std
         return {"predictions": preds, "lower": lower, "upper": upper, "model": "holt_winters"}
     except Exception as e:
         logger.warning(f"Holt-Winters failed: {e}. Falling back to exp_smoothing.")

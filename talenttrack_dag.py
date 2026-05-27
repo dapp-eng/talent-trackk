@@ -182,7 +182,7 @@ def task_preprocess_periodic(periodic_raw_path):
     return str(preprocess_file(periodic_raw_path, source_label="periodic"))
 
 
-def task_ner_kaggle(kaggle_preprocessed_path):
+def task_ner_kaggle(kaggle_deduped_path):
     import os, sys
     from pathlib import Path
     _CANDIDATES_LOCAL = [
@@ -199,12 +199,12 @@ def task_ner_kaggle(kaggle_preprocessed_path):
         if p not in sys.path:
             sys.path.insert(0, p)
     from transform.ner_skills import run_ner
-    if not kaggle_preprocessed_path or not Path(kaggle_preprocessed_path).exists():
+    if not kaggle_deduped_path or not Path(kaggle_deduped_path).exists():
         return ""
-    return str(run_ner(kaggle_preprocessed_path))
+    return str(run_ner(kaggle_deduped_path))
 
 
-def task_ner_periodic(periodic_preprocessed_path):
+def task_ner_periodic(periodic_deduped_path):
     import os, sys
     from pathlib import Path
     _CANDIDATES_LOCAL = [
@@ -221,9 +221,9 @@ def task_ner_periodic(periodic_preprocessed_path):
         if p not in sys.path:
             sys.path.insert(0, p)
     from transform.ner_skills import run_ner
-    if not periodic_preprocessed_path or not Path(periodic_preprocessed_path).exists():
+    if not periodic_deduped_path or not Path(periodic_deduped_path).exists():
         return ""
-    return str(run_ner(periodic_preprocessed_path))
+    return str(run_ner(periodic_deduped_path))
 
 
 def task_dedup_kaggle(kaggle_preprocessed_path):
@@ -473,7 +473,7 @@ with DAG(
     )
     k_ner = _epo(
         "ner_kaggle", task_ner_kaggle,
-        {"kaggle_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_kaggle') }}"},
+        {"kaggle_deduped_path": "{{ ti.xcom_pull(task_ids='dedup_kaggle') }}"},
         retries=0, execution_timeout=timedelta(hours=6),
     )
     k_dedup = _epo(
@@ -492,7 +492,7 @@ with DAG(
 
     (
         k_init_db >> k_seed_time >> k_setup_partitions >> k_extract
-        >> k_preprocess >> [k_ner, k_dedup]
+        >> k_preprocess >> k_dedup >> k_ner
         >> k_load >> k_refresh >> k_forecast
     )
 
@@ -521,7 +521,7 @@ with DAG(
     )
     p_ner = _epo(
         "ner_periodic", task_ner_periodic,
-        {"periodic_preprocessed_path": "{{ ti.xcom_pull(task_ids='preprocess_periodic') }}"},
+        {"periodic_deduped_path": "{{ ti.xcom_pull(task_ids='dedup_periodic') }}"},
         retries=0, execution_timeout=timedelta(hours=2),
     )
     p_dedup = _epo(
@@ -540,6 +540,6 @@ with DAG(
 
     (
         p_init_db >> p_seed_time >> p_setup_partitions >> p_extract
-        >> p_preprocess >> [p_ner, p_dedup]
+        >> p_preprocess >> p_dedup >> p_ner
         >> p_load >> p_refresh >> p_forecast
     )
