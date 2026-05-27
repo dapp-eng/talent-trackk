@@ -21,6 +21,7 @@ def q_skill_demand_cube(engine=None) -> pd.DataFrame:
             dp.job_category,
             dp.job_level,
             dl.country,
+            dl.region,
             dpl.platform_name,
             COUNT(DISTINCT f.job_id) AS posting_count,
             SUM(CASE WHEN f.is_remote THEN 1 END) AS remote_count,
@@ -37,7 +38,7 @@ def q_skill_demand_cube(engine=None) -> pd.DataFrame:
             dt.year, dt.quarter, dt.month, dt.week_label,
             ds.skill_name, ds.skill_type, ds.skill_domain,
             dp.job_category, dp.job_level,
-            dl.country,
+            dl.country, dl.region,
             dpl.platform_name
         )
         HAVING COUNT(DISTINCT f.job_id) > 0
@@ -70,11 +71,11 @@ def q_skill_trend_weekly(skill_name: str, engine=None) -> pd.DataFrame:
     query = """
         SELECT
             week_label, year, week,
-            job_category, country,
+            job_category,
             SUM(posting_count) AS posting_count
         FROM mv_weekly_skill_demand
         WHERE skill_name = %(skill)s
-        GROUP BY week_label, year, week, job_category, country
+        GROUP BY week_label, year, week, job_category
         ORDER BY year, week;
     """
     return pd.read_sql(query, engine, params={"skill": skill_name})
@@ -96,8 +97,48 @@ def q_platform_comparison(engine=None) -> pd.DataFrame:
     return pd.read_sql(query, engine)
 
 
+def q_current_top_skills(engine=None, last_n_weeks: int = 4, top_n: int = 30,
+                          job_category: str = None) -> pd.DataFrame:
+    """
+    Skill yang sedang demand saat ini (berdasarkan data historis N minggu terakhir).
+    Aggregasi global (seluruh dunia) tanpa filter negara.
+    """
+    if engine is None:
+        engine = get_engine_cached()
+
+    cat_filter = "AND job_category = %(cat)s" if job_category else ""
+    query = f"""
+        WITH recent_weeks AS (
+            SELECT DISTINCT week_label
+            FROM mv_weekly_skill_demand
+            ORDER BY week_label DESC
+            LIMIT %(last_n)s
+        )
+        SELECT
+            skill_name,
+            skill_type,
+            skill_domain,
+            job_category,
+            SUM(posting_count) AS total_postings,
+            COUNT(DISTINCT week_label) AS weeks_active
+        FROM mv_weekly_skill_demand
+        WHERE week_label IN (SELECT week_label FROM recent_weeks)
+        {cat_filter}
+        GROUP BY skill_name, skill_type, skill_domain, job_category
+        ORDER BY total_postings DESC
+        LIMIT %(top_n)s;
+    """
+    params = {"last_n": last_n_weeks, "top_n": top_n}
+    if job_category:
+        params["cat"] = job_category
+    return pd.read_sql(query, engine, params=params)
+
+
 def q_forecast_next_n_weeks(skill_name: str = None, n_weeks: int = 8,
                               engine=None) -> pd.DataFrame:
+    """
+    Forecast skill demand untuk N minggu ke depan (global, tanpa filter negara).
+    """
     if engine is None:
         engine = get_engine_cached()
     base = """
@@ -107,7 +148,6 @@ def q_forecast_next_n_weeks(skill_name: str = None, n_weeks: int = 8,
             fsd.forecast_week,
             ds.skill_name,
             fsd.job_category,
-            fsd.country,
             fsd.predicted_count,
             fsd.lower_bound,
             fsd.upper_bound,
@@ -118,21 +158,36 @@ def q_forecast_next_n_weeks(skill_name: str = None, n_weeks: int = 8,
         JOIN dim_skill ds ON fsd.skill_id = ds.skill_id
     """
     if skill_name:
-        query = base + " WHERE ds.skill_name = %(skill)s ORDER BY fsd.forecast_week_label LIMIT %(n)s;"
-        return pd.read_sql(query, engine, params={"skill": skill_name, "n": n_weeks * 10})
+        query = base + """
+            WHERE ds.skill_name = %(skill)s
+            ORDER BY fsd.forecast_week_label
+            LIMIT %(n)s;
+        """
+        return pd.read_sql(query, engine, params={"skill": skill_name, "n": n_weeks})
     else:
         query = base + " ORDER BY fsd.forecast_week_label, fsd.predicted_count DESC;"
         return pd.read_sql(query, engine)
 
 
-def q_trending_skills(top_n: int = 20, min_postings: int = 3, engine=None) -> pd.DataFrame:
+def q_trending_skills(top_n: int = 20, min_postings: int = 3,
+                       job_category: str = None, engine=None) -> pd.DataFrame:
+    """
+    Skill yang diprediksi naik demand-nya di masa depan (global).
+    trend_score positif = naik, negatif = turun.
+    Hanya menampilkan forecast dari current week ke depan.
+    """
     if engine is None:
         engine = get_engine_cached()
-    query = """
+
+    cat_filter = "AND fsd.job_category = %(cat)s" if job_category else ""
+    query = f"""
+        WITH current_week AS (
+            SELECT TO_CHAR(CURRENT_DATE, 'IYYY') || '-W' ||
+                   LPAD(TO_CHAR(CURRENT_DATE, 'IW'), 2, '0') AS week_label
+        )
         SELECT
             ds.skill_name,
             fsd.job_category,
-            fsd.country,
             fsd.forecast_week_label,
             fsd.predicted_count,
             fsd.lower_bound,
@@ -141,11 +196,62 @@ def q_trending_skills(top_n: int = 20, min_postings: int = 3, engine=None) -> pd
             fsd.model_name
         FROM forecast_skill_demand fsd
         JOIN dim_skill ds ON fsd.skill_id = ds.skill_id
+        CROSS JOIN current_week cw
         WHERE fsd.predicted_count >= %(min_p)s
+          AND fsd.forecast_week_label >= cw.week_label
+          {cat_filter}
         ORDER BY fsd.trend_score DESC, fsd.predicted_count DESC
         LIMIT %(n)s;
     """
-    return pd.read_sql(query, engine, params={"min_p": min_postings, "n": top_n})
+    params = {"min_p": min_postings, "n": top_n}
+    if job_category:
+        params["cat"] = job_category
+    return pd.read_sql(query, engine, params=params)
+
+
+def q_global_skill_demand_summary(engine=None, top_n: int = 50) -> pd.DataFrame:
+    """
+    Ringkasan demand skill secara global: gabungkan data historis + forecast.
+    Berguna untuk lihat skill mana yang sedang dan akan terus populer.
+    """
+    if engine is None:
+        engine = get_engine_cached()
+    query = """
+        WITH historical AS (
+            SELECT
+                skill_name,
+                job_category,
+                SUM(posting_count) AS historical_count,
+                MAX(week_label) AS last_seen_week
+            FROM mv_weekly_skill_demand
+            GROUP BY skill_name, job_category
+        ),
+        forecast_agg AS (
+            SELECT
+                ds.skill_name,
+                fsd.job_category,
+                SUM(fsd.predicted_count) AS forecasted_count,
+                MAX(fsd.trend_score) AS max_trend_score,
+                MAX(fsd.model_name) AS model_name
+            FROM forecast_skill_demand fsd
+            JOIN dim_skill ds ON fsd.skill_id = ds.skill_id
+            GROUP BY ds.skill_name, fsd.job_category
+        )
+        SELECT
+            h.skill_name,
+            h.job_category,
+            h.historical_count,
+            h.last_seen_week,
+            COALESCE(f.forecasted_count, 0) AS forecasted_count,
+            COALESCE(f.max_trend_score, 0) AS trend_score,
+            f.model_name
+        FROM historical h
+        LEFT JOIN forecast_agg f
+            ON h.skill_name = f.skill_name AND h.job_category = f.job_category
+        ORDER BY h.historical_count DESC
+        LIMIT %(top_n)s;
+    """
+    return pd.read_sql(query, engine, params={"top_n": top_n})
 
 
 def q_salary_by_skill_level(engine=None) -> pd.DataFrame:

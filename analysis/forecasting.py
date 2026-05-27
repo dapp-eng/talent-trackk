@@ -2,7 +2,7 @@ import warnings
 import logging
 import numpy as np
 import pandas as pd
-from datetime import datetime
+import datetime
 from sqlalchemy import text
 
 warnings.filterwarnings("ignore")
@@ -143,14 +143,18 @@ def _forecast_series(series: pd.Series, horizon: int) -> dict | None:
         return _prophet(values, horizon)
 
 
-def _get_weekly_skill_data(engine) -> pd.DataFrame:
+def _get_weekly_skill_data_global(engine) -> pd.DataFrame:
     query = text("""
         SELECT
-            week_label, year, week,
-            skill_name, skill_domain,
-            job_category, country,
-            posting_count
+            week_label,
+            year,
+            week,
+            skill_name,
+            skill_domain,
+            job_category,
+            SUM(posting_count) AS posting_count
         FROM mv_weekly_skill_demand
+        GROUP BY week_label, year, week, skill_name, skill_domain, job_category
         ORDER BY year, week;
     """)
     with engine.connect() as conn:
@@ -161,13 +165,12 @@ def _get_weekly_skill_data(engine) -> pd.DataFrame:
 
 
 def _get_future_week_labels(last_year: int, last_week: int, horizon: int) -> list:
+    d = datetime.date.fromisocalendar(last_year, last_week, 1)
     labels = []
-    yr, wk = last_year, last_week
-    for _ in range(horizon):
-        wk += 1
-        if wk > 52:
-            wk = 1
-            yr += 1
+    for i in range(1, horizon + 1):
+        d_future = d + datetime.timedelta(weeks=i)
+        iso = d_future.isocalendar()
+        yr, wk = iso[0], iso[1]
         labels.append((yr, wk, f"{yr}-W{wk:02d}"))
     return labels
 
@@ -178,19 +181,18 @@ def run_forecasting(engine=None, horizon: int = None):
     if horizon is None:
         horizon = FORECAST_HORIZON_WEEKS
 
-    logger.warning("Loading weekly skill demand data...")
-    df = _get_weekly_skill_data(engine)
+    logger.warning("Loading global weekly skill demand data...")
+    df = _get_weekly_skill_data_global(engine)
     if df.empty:
         logger.warning("No data in mv_weekly_skill_demand. Skipping forecasting.")
         return
 
-    df = df[df["country"] != "Unknown"].copy()
     df = df[df["job_category"] != "Other"].copy()
 
-    group_cols = ["skill_name", "job_category", "country"]
+    group_cols = ["skill_name", "job_category"]
     groups = df.groupby(group_cols)
     total = len(groups)
-    logger.warning(f"Forecasting {total} combinations, horizon={horizon} weeks, min_history={FORECAST_MIN_HISTORY_WEEKS} week(s)")
+    logger.warning(f"Global forecasting: {total} skill×category combinations, horizon={horizon} weeks")
 
     results = []
     skipped = 0
@@ -211,7 +213,6 @@ def run_forecasting(engine=None, horizon: int = None):
             results.append({
                 "skill_name": key[0],
                 "job_category": key[1],
-                "country": key[2],
                 "forecast_week_label": wk_label,
                 "forecast_year": yr,
                 "forecast_week": wk,
@@ -245,7 +246,6 @@ def run_forecasting(engine=None, horizon: int = None):
         rows.append((
             int(skill_id),
             row["job_category"],
-            row["country"],
             row["forecast_week_label"],
             int(row["forecast_year"]),
             int(row["forecast_week"]),
@@ -264,34 +264,34 @@ def run_forecasting(engine=None, horizon: int = None):
     conn = get_connection()
     try:
         cur = conn.cursor()
+        generated_at = datetime.datetime.utcnow()
         psycopg2.extras.execute_values(
             cur,
             """
             INSERT INTO forecast_skill_demand
-                (skill_id, job_category, country, forecast_week_label,
+                (skill_id, job_category, forecast_week_label,
                  forecast_year, forecast_week, predicted_count, lower_bound,
-                 upper_bound, trend_score, model_name)
+                 upper_bound, trend_score, model_name, generated_at)
             VALUES %s
-            ON CONFLICT (skill_id, job_category, country, forecast_week_label)
+            ON CONFLICT (skill_id, job_category, forecast_week_label)
             DO UPDATE SET
                 predicted_count = EXCLUDED.predicted_count,
                 lower_bound     = EXCLUDED.lower_bound,
                 upper_bound     = EXCLUDED.upper_bound,
                 trend_score     = EXCLUDED.trend_score,
                 model_name      = EXCLUDED.model_name,
-                generated_at    = NOW();
+                generated_at    = EXCLUDED.generated_at;
             """,
-            rows,
+            [r + (generated_at,) for r in rows],
             page_size=500,
         )
         conn.commit()
+
         cur2 = conn.cursor()
         cur2.execute("""
             DELETE FROM forecast_skill_demand
-            WHERE generated_at < (
-                SELECT MAX(generated_at) FROM forecast_skill_demand
-            );
-        """)
+            WHERE generated_at < %s;
+        """, (generated_at,))
         conn.commit()
         logger.warning(f"Forecast: {len(rows)} rows inserted/updated, old generations cleaned.")
     except Exception:

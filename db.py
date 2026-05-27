@@ -75,7 +75,6 @@ def run_partition_setup():
 def refresh_materialized_views():
     views = [
         "mv_weekly_skill_demand",
-        "mv_weekly_entity_demand",
         "mv_platform_monthly",
         "mv_company_hiring",
     ]

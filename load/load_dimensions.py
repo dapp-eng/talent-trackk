@@ -6,12 +6,6 @@ from db import get_connection
 logger = logging.getLogger(__name__)
 
 
-def _exec_returning(conn, sql: str, params: tuple):
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute(sql, params)
-    return cur.fetchone()
-
-
 def upsert_dim_time(dates: pd.Series) -> dict:
     unique_dates = pd.to_datetime(dates.dropna()).dt.normalize().unique()
     conn = get_connection()
@@ -36,7 +30,7 @@ def upsert_dim_time(dates: pd.Series) -> dict:
 
 
 def upsert_dim_location(df: pd.DataFrame) -> dict:
-    loc_cols = ["loc_city", "loc_country"]
+    loc_cols = ["loc_city", "loc_country", "global_region"]
     rows = df[loc_cols].drop_duplicates().fillna("").replace("nan", "")
     conn = get_connection()
     try:
@@ -44,11 +38,13 @@ def upsert_dim_location(df: pd.DataFrame) -> dict:
         for _, row in rows.iterrows():
             city = row["loc_city"] or None
             country = row["loc_country"] or "Unknown"
+            region = row["global_region"] or "Other"
             cur.execute("""
-                INSERT INTO dim_location (city, country)
-                VALUES (%s, %s)
-                ON CONFLICT (city, country) DO NOTHING;
-            """, (city, country))
+                INSERT INTO dim_location (city, country, region)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (city, country) DO UPDATE
+                    SET region = EXCLUDED.region;
+            """, (city, country, region))
         conn.commit()
         cur.execute("SELECT location_id, city, country FROM dim_location;")
         mapping = {}
@@ -66,7 +62,7 @@ def upsert_dim_location(df: pd.DataFrame) -> dict:
 
 def upsert_dim_company(df: pd.DataFrame) -> dict:
     names = df["company_clean"].dropna().unique()
-    conn  = get_connection()
+    conn = get_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         for name in names:

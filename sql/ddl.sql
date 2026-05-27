@@ -21,10 +21,12 @@ CREATE TABLE IF NOT EXISTS dim_location (
     location_id SERIAL PRIMARY KEY,
     city TEXT,
     country TEXT NOT NULL DEFAULT 'Unknown',
+    region TEXT NOT NULL DEFAULT 'Other',
     UNIQUE (city, country)
 );
 
 CREATE INDEX IF NOT EXISTS idx_dim_location_country ON dim_location (country);
+CREATE INDEX IF NOT EXISTS idx_dim_location_region  ON dim_location (region);
 
 CREATE TABLE IF NOT EXISTS dim_company (
     company_id SERIAL PRIMARY KEY,
@@ -101,7 +103,6 @@ CREATE TABLE IF NOT EXISTS forecast_skill_demand (
     forecast_id BIGSERIAL PRIMARY KEY,
     skill_id INT REFERENCES dim_skill(skill_id),
     job_category TEXT,
-    country TEXT,
     forecast_week_label TEXT NOT NULL,
     forecast_year INT NOT NULL,
     forecast_week INT NOT NULL,
@@ -111,12 +112,11 @@ CREATE TABLE IF NOT EXISTS forecast_skill_demand (
     trend_score NUMERIC(12,4),
     model_name TEXT,
     generated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (skill_id, job_category, country, forecast_week_label)
+    UNIQUE (skill_id, job_category, forecast_week_label)
 );
 
-CREATE INDEX IF NOT EXISTS idx_forecast_skill   ON forecast_skill_demand (skill_id);
-CREATE INDEX IF NOT EXISTS idx_forecast_week    ON forecast_skill_demand (forecast_week_label);
-CREATE INDEX IF NOT EXISTS idx_forecast_country ON forecast_skill_demand (country);
+CREATE INDEX IF NOT EXISTS idx_forecast_skill ON forecast_skill_demand (skill_id);
+CREATE INDEX IF NOT EXISTS idx_forecast_week  ON forecast_skill_demand (forecast_week_label);
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_weekly_skill_demand AS
 SELECT
@@ -128,6 +128,7 @@ SELECT
     ds.skill_domain,
     dp.job_category,
     dl.country,
+    dl.region,
     COUNT(DISTINCT f.job_id) AS posting_count,
     AVG(f.salary_min) AS avg_salary_min,
     AVG(f.salary_max) AS avg_salary_max
@@ -139,7 +140,7 @@ JOIN dim_position dp ON f.position_id = dp.position_id
 JOIN dim_location dl ON f.location_id = dl.location_id
 GROUP BY dt.year, dt.week, dt.week_label,
          ds.skill_name, ds.skill_type, ds.skill_domain,
-         dp.job_category, dl.country
+         dp.job_category, dl.country, dl.region
 WITH DATA;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_weekly_skill
@@ -152,6 +153,7 @@ SELECT
     dpl.platform_name,
     dp.job_category,
     dl.country,
+    dl.region,
     COUNT(DISTINCT f.job_id) AS posting_count,
     SUM(CASE WHEN f.is_remote THEN 1 ELSE 0 END) AS remote_count,
     SUM(CASE WHEN f.has_salary THEN 1 ELSE 0 END) AS with_salary_count
@@ -160,7 +162,7 @@ JOIN dim_time dt ON f.time_id = dt.time_id
 JOIN dim_platform dpl ON f.platform_id = dpl.platform_id
 JOIN dim_position dp ON f.position_id = dp.position_id
 JOIN dim_location dl ON f.location_id = dl.location_id
-GROUP BY dt.year, dt.month, dpl.platform_name, dp.job_category, dl.country
+GROUP BY dt.year, dt.month, dpl.platform_name, dp.job_category, dl.country, dl.region
 WITH DATA;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_platform_monthly
@@ -172,13 +174,14 @@ SELECT
     dt.year,
     dt.quarter,
     dl.country,
+    dl.region,
     COUNT(DISTINCT f.job_id) AS total_postings,
     AVG(f.salary_max) AS avg_salary_max
 FROM fact_job_posting f
 JOIN dim_company dc ON f.company_id = dc.company_id
 JOIN dim_time dt ON f.time_id = dt.time_id
 JOIN dim_location dl ON f.location_id = dl.location_id
-GROUP BY dc.company_name, dt.year, dt.quarter, dl.country
+GROUP BY dc.company_name, dt.year, dt.quarter, dl.country, dl.region
 WITH DATA;
 
 CREATE INDEX IF NOT EXISTS idx_mv_company_hiring

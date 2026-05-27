@@ -51,22 +51,20 @@ def seed_dim_time():
 
 def seed_platforms():
     platforms = [
-        ("LinkedIn", "Global"),
-        ("Indeed", "Global"),
-        ("Glassdoor", "Global"),
-        ("ZipRecruiter", "USA"),
-        ("Google Jobs", "Global"),
-        ("Kaggle Historical", "Global"),
-        ("Synthetic", "Testing"),
-        ("Unknown", "Unknown"),
+        "LinkedIn",
+        "Indeed",
+        "Glassdoor",
+        "ZipRecruiter",
+        "Google Jobs",
+        "Unknown",
     ]
     with get_cursor() as cur:
-        for name, region in platforms:
+        for name in platforms:
             cur.execute("""
-                INSERT INTO dim_platform (platform_name, regional_focus)
-                VALUES (%s, %s)
+                INSERT INTO dim_platform (platform_name)
+                VALUES (%s)
                 ON CONFLICT (platform_name) DO NOTHING;
-            """, (name, region))
+            """, (name,))
     print(f"Seeded {len(platforms)} platforms.")
 
 
