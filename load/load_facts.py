@@ -70,12 +70,6 @@ def load_fact_job_posting(
         platform = str(row.get("platform_norm", "LinkedIn")).strip() or "LinkedIn"
         platform_id = platform_map.get(platform, platform_map.get("LinkedIn"))
 
-        posting_date = row.get("date_parsed")
-        if pd.notna(posting_date):
-            age_days = max(0, _safe_int((pd.Timestamp.now() - pd.Timestamp(posting_date)).days))
-        else:
-            age_days = None
-
         rows.append((
             int(time_id),
             _safe_int(location_id),
@@ -83,7 +77,6 @@ def load_fact_job_posting(
             _safe_int(position_id),
             _safe_int(platform_id),
             1,
-            age_days,
             bool(row.get("has_salary", False)),
             bool(row.get("is_remote", False)),
             _safe_float(row.get("salary_min")),
@@ -106,7 +99,7 @@ def load_fact_job_posting(
             """
             INSERT INTO fact_job_posting
                 (time_id, location_id, company_id, position_id, platform_id,
-                 posting_count, job_age_days, has_salary, is_remote,
+                 posting_count, has_salary, is_remote,
                  salary_min, salary_max, source_hash, raw_title)
             VALUES %s
             ON CONFLICT (source_hash, time_id) DO NOTHING;

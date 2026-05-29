@@ -69,7 +69,6 @@ CREATE TABLE IF NOT EXISTS fact_job_posting (
     position_id INT REFERENCES dim_position(position_id),
     platform_id INT REFERENCES dim_platform(platform_id),
     posting_count INT DEFAULT 1,
-    job_age_days INT,
     has_salary BOOLEAN DEFAULT FALSE,
     is_remote BOOLEAN DEFAULT FALSE,
     salary_min NUMERIC(15,2),
